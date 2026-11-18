@@ -136,6 +136,31 @@ function pushMessage(list, message) {
   if (list.length > MAX_HISTORY) list.shift();
 }
 
+function findMessage(scope, target, messageId) {
+  if (scope === 'channel') {
+    const list = channelMessages.get(target);
+    const message = list && list.find((item) => item.id === messageId);
+    return message ? { message, list } : null;
+  }
+  for (const [key, list] of dmMessages) {
+    const message = list.find((item) => item.id === messageId);
+    if (message) return { message, list, key };
+  }
+  return null;
+}
+
+function emitMessageEvent(event, scope, message, payload) {
+  if (scope === 'dm') {
+    const ids = [
+      byUsername.get(message.from.toLowerCase()),
+      byUsername.get(message.to.toLowerCase())
+    ].filter(Boolean);
+    io.to(ids).emit(event, payload);
+  } else {
+    io.emit(event, payload);
+  }
+}
+
 async function accessTo(username, serverId, permission) {
   const server = await store.getServerById(serverId);
   if (!server) return { server: null, allowed: false };
@@ -549,25 +574,14 @@ io.on('connection', (socket) => {
     if (!profile) return;
 
     const scope = data.scope === 'dm' ? 'dm' : 'channel';
-    const target = clean(data.target, 20);
+    const target = clean(data.target, 64);
     const emoji = clean(data.emoji, 8);
     const messageId = String(data.messageId || '');
     if (!emoji) return;
 
-    let message = null;
-    if (scope === 'channel') {
-      const list = channelMessages.get(target);
-      if (list) message = list.find((item) => item.id === messageId);
-    } else {
-      for (const list of dmMessages.values()) {
-        const found = list.find((item) => item.id === messageId);
-        if (found) {
-          message = found;
-          break;
-        }
-      }
-    }
-    if (!message) return;
+    const found = findMessage(scope, target, messageId);
+    if (!found) return;
+    const { message } = found;
 
     if (!message.reactions) message.reactions = {};
     const users = message.reactions[emoji] || [];
@@ -578,15 +592,49 @@ io.on('connection', (socket) => {
     else delete message.reactions[emoji];
 
     const payload = { scope, target, messageId, reactions: message.reactions };
-    if (scope === 'dm') {
-      const ids = [
-        byUsername.get(message.from.toLowerCase()),
-        byUsername.get(message.to.toLowerCase())
-      ].filter(Boolean);
-      io.to(ids).emit('reaction:update', payload);
-    } else {
-      io.emit('reaction:update', payload);
+    emitMessageEvent('reaction:update', scope, message, payload);
+  });
+
+  socket.on('message:edit', (data) => {
+    const profile = profiles.get(socket.id);
+    if (!profile) return;
+
+    const scope = data.scope === 'dm' ? 'dm' : 'channel';
+    const target = clean(data.target, 64);
+    const messageId = String(data.messageId || '');
+    const text = clean(data.text, 500);
+    if (!text) return;
+
+    const found = findMessage(scope, target, messageId);
+    if (!found || found.message.from !== profile.username) {
+      socket.emit('message:error', 'You can only edit your own messages.');
+      return;
     }
+
+    found.message.text = text;
+    found.message.edited = Date.now();
+    const payload = { scope, target, messageId, text, edited: found.message.edited };
+    emitMessageEvent('message:update', scope, found.message, payload);
+  });
+
+  socket.on('message:delete', (data) => {
+    const profile = profiles.get(socket.id);
+    if (!profile) return;
+
+    const scope = data.scope === 'dm' ? 'dm' : 'channel';
+    const target = clean(data.target, 64);
+    const messageId = String(data.messageId || '');
+
+    const found = findMessage(scope, target, messageId);
+    if (!found || found.message.from !== profile.username) {
+      socket.emit('message:error', 'You can only delete your own messages.');
+      return;
+    }
+
+    const index = found.list.indexOf(found.message);
+    if (index >= 0) found.list.splice(index, 1);
+    const payload = { scope, target, messageId };
+    emitMessageEvent('message:deleted', scope, found.message, payload);
   });
 
   socket.on('typing', (data) => {

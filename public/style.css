@@ -672,18 +672,59 @@ label {
   font-size: 0.72rem;
 }
 
-.react-button {
-  padding: 1px 6px;
+.message-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.message:hover .message-actions,
+.message:focus-within .message-actions {
+  opacity: 1;
+}
+
+.message-action {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
   border: 0;
   border-radius: 4px;
   background: transparent;
   color: var(--muted);
-  font-size: 0.9rem;
 }
 
-.react-button:hover {
+.message-action .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.message-action:hover {
   background: var(--active);
   color: #fff;
+}
+
+.message-action.delete:hover {
+  color: #f28b82;
+}
+
+.message-editor {
+  margin-top: 2px;
+}
+
+.message-editor textarea {
+  width: 100%;
+  min-height: 62px;
+  resize: vertical;
+}
+
+.message-editor-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
 }
 
 .message-text {

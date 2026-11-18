@@ -730,6 +730,68 @@ function renderReactions(message) {
   return wrapper;
 }
 
+function messageContext(message) {
+  return {
+    scope: view.type === 'dm' ? 'dm' : 'channel',
+    target: view.id,
+    messageId: message.id
+  };
+}
+
+function startMessageEdit(message, textElement) {
+  const context = messageContext(message);
+  const editor = document.createElement('div');
+  editor.className = 'message-editor';
+
+  const input = document.createElement('textarea');
+  input.value = message.text;
+  input.maxLength = 500;
+  input.rows = 2;
+
+  const actions = document.createElement('div');
+  actions.className = 'message-editor-actions';
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'primary small-button';
+  save.textContent = 'Save';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'secondary small-button';
+  cancel.textContent = 'Cancel';
+  actions.append(save, cancel);
+  editor.append(input, actions);
+  textElement.replaceWith(editor);
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+
+  let done = false;
+  const finish = (shouldSave) => {
+    if (done) return;
+    done = true;
+    const next = input.value.trim();
+    editor.replaceWith(textElement);
+    if (!shouldSave || !next || next === message.text) return;
+    socket.emit('message:edit', { ...context, text: next });
+  };
+
+  save.addEventListener('click', () => finish(true));
+  cancel.addEventListener('click', () => finish(false));
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      finish(true);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      finish(false);
+    }
+  });
+}
+
+function deleteMessage(message) {
+  if (!confirm('Delete this message?')) return;
+  socket.emit('message:delete', messageContext(message));
+}
+
 function appendMessage(message, scroll) {
   const item = document.createElement('li');
   item.className = 'message';
@@ -750,14 +812,37 @@ function appendMessage(message, scroll) {
   });
   const time = document.createElement('span');
   time.className = 'message-time';
-  time.textContent = formatTime(message.time);
+  time.textContent = formatTime(message.time) + (message.edited ? ' · edited' : '');
+
+  const actions = document.createElement('div');
+  actions.className = 'message-actions';
+
+  if (me && message.from === me.username) {
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'message-action';
+    editButton.append(svgIcon('edit'));
+    editButton.title = 'Edit message';
+    editButton.addEventListener('click', () => startMessageEdit(message, text));
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'message-action delete';
+    deleteButton.append(svgIcon('trash'));
+    deleteButton.title = 'Delete message';
+    deleteButton.addEventListener('click', () => deleteMessage(message));
+
+    actions.append(editButton, deleteButton);
+  }
+
   const reactButton = document.createElement('button');
   reactButton.type = 'button';
-  reactButton.className = 'react-button';
+  reactButton.className = 'message-action react';
   reactButton.append(svgIcon('smile-plus'));
   reactButton.title = 'Add reaction';
   reactButton.addEventListener('click', (event) => openReactionPicker(event, message));
-  meta.append(author, time, reactButton);
+  actions.append(reactButton);
+  meta.append(author, time, actions);
 
   const text = document.createElement('div');
   text.className = 'message-text';
@@ -1624,6 +1709,37 @@ socket.on('reaction:update', (payload) => {
   const message = list.find((item) => item.id === payload.messageId);
   if (!message) return;
   message.reactions = payload.reactions;
+  const isCurrent = (payload.scope === 'channel' && view.type === 'channel' && view.id === payload.target) ||
+    (payload.scope === 'dm' && view.type === 'dm' && view.id === payload.target);
+  if (isCurrent) {
+    const position = messagesEl.scrollTop;
+    renderView();
+    messagesEl.scrollTop = position;
+  }
+});
+
+socket.on('message:update', (payload) => {
+  const list = payload.scope === 'channel' ? messagesByChannel[payload.target] : conversations[payload.target];
+  if (!list) return;
+  const message = list.find((item) => item.id === payload.messageId);
+  if (!message) return;
+  message.text = payload.text;
+  message.edited = payload.edited;
+  const isCurrent = (payload.scope === 'channel' && view.type === 'channel' && view.id === payload.target) ||
+    (payload.scope === 'dm' && view.type === 'dm' && view.id === payload.target);
+  if (isCurrent) {
+    const position = messagesEl.scrollTop;
+    renderView();
+    messagesEl.scrollTop = position;
+  }
+});
+
+socket.on('message:deleted', (payload) => {
+  const list = payload.scope === 'channel' ? messagesByChannel[payload.target] : conversations[payload.target];
+  if (!list) return;
+  const index = list.findIndex((item) => item.id === payload.messageId);
+  if (index < 0) return;
+  list.splice(index, 1);
   const isCurrent = (payload.scope === 'channel' && view.type === 'channel' && view.id === payload.target) ||
     (payload.scope === 'dm' && view.type === 'dm' && view.id === payload.target);
   if (isCurrent) {
