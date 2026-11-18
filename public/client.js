@@ -84,7 +84,7 @@ const userSettingsModal = byId('user-settings-modal');
 const dmModal = byId('dm-modal');
 const serverRail = byId('server-rail');
 const serverTitle = byId('server-title');
-const serverIcon = byId('server-icon');
+const serverIcon = byId('brand-icon');
 const serverSettings = byId('server-settings');
 const channelHeading = byId('channel-heading');
 const newChannel = byId('new-channel');
@@ -1147,7 +1147,7 @@ fillSelect(byId('reg-avatar'), AVATARS);
 fillSelect(byId('edit-avatar'), AVATARS);
 fillSelect(byId('edit-color'), COLORS.map((color) => color.value), COLORS.map((color) => color.label));
 fillSelect(
-  byId('server-icon'),
+  byId('server-icon-select'),
   SERVER_ICONS,
   SERVER_ICONS.map((name) => name[0].toUpperCase() + name.slice(1))
 );
@@ -1193,13 +1193,22 @@ registerForm.addEventListener('submit', async (event) => {
 byId('server-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const errorEl = byId('server-error');
+  const submitButton = byId('server-submit');
+  const mode = serverMode;
   errorEl.textContent = '';
+  if (!token) {
+    errorEl.textContent = 'Please log in again.';
+    return;
+  }
+
+  submitButton.disabled = true;
+  submitButton.textContent = mode === 'create' ? 'Creating...' : 'Joining...';
   try {
-    const data = serverMode === 'create'
+    const data = mode === 'create'
       ? await api('/api/servers/create', {
           token,
           name: byId('server-name').value.trim(),
-          icon: `i:${byId('server-icon').value}`
+          icon: `i:${byId('server-icon-select').value}`
         })
       : await api('/api/servers/join', {
           token,
@@ -1208,7 +1217,11 @@ byId('server-form').addEventListener('submit', async (event) => {
     activeServerId = data.server.id;
     serverModal.classList.add('hidden');
   } catch (error) {
-    errorEl.textContent = error.message;
+    console.error('Server action failed:', error);
+    errorEl.textContent = error.message || 'Something went wrong.';
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = mode === 'create' ? 'Create Server' : 'Join Server';
   }
 });
 
