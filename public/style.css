@@ -1105,6 +1105,116 @@ label {
   padding: 0;
 }
 
+.settings-card .auth-tabs {
+  margin-bottom: 18px;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0;
+  font-weight: 500;
+}
+
+.check-row input {
+  width: auto;
+  padding: 0;
+}
+
+body[data-theme="charcoal"] {
+  --sidebar: #141517;
+  --sidebar-dark: #101113;
+  --main: #1a1b1e;
+  --members: #161719;
+  --input: #0f1012;
+  --hover: #25262a;
+  --active: #2f3035;
+}
+
+body[data-theme="light"] {
+  --sidebar: #f2f3f5;
+  --sidebar-dark: #e6e8eb;
+  --main: #ffffff;
+  --members: #f7f8fa;
+  --input: #ffffff;
+  --text: #2b2d31;
+  --muted: #6d6f78;
+  --hover: #e3e5e8;
+  --active: #d7d9de;
+}
+
+body[data-theme="ocean"] {
+  --sidebar: #111c2e;
+  --sidebar-dark: #0c1625;
+  --main: #16233a;
+  --members: #121d30;
+  --input: #0c1625;
+  --hover: #1d2c45;
+  --active: #263957;
+}
+
+body[data-theme="forest"] {
+  --sidebar: #16231c;
+  --sidebar-dark: #101a14;
+  --main: #1b2a22;
+  --members: #142019;
+  --input: #101a14;
+  --hover: #22352a;
+  --active: #2b4234;
+}
+
+body[data-theme="light"] .server-icon,
+body[data-theme="light"] .emoji-picker,
+body[data-theme="light"] .role-item,
+body[data-theme="light"] .settings-member,
+body[data-theme="light"] .hub-card,
+body[data-theme="light"] .composer,
+body[data-theme="light"] .profile-status,
+body[data-theme="light"] .reaction-chip,
+body[data-theme="light"] .auth-tabs,
+body[data-theme="light"] .auth-tab {
+  background: #e6e8eb;
+  color: var(--text);
+}
+
+body[data-theme="light"] .auth-tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+body[data-theme="light"] input,
+body[data-theme="light"] select,
+body[data-theme="light"] textarea {
+  border-color: #c9ccd2;
+}
+
+body[data-theme="light"] .message:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+body.compact .message {
+  padding: 4px 0;
+}
+
+body.compact .side-item,
+body.compact .member {
+  padding: 5px 8px;
+}
+
+body.compact .messages {
+  padding: 12px 20px;
+}
+
+body.compact .composer {
+  margin: 0 20px 14px;
+  padding: 6px;
+}
+
+body.compact .hub {
+  padding: 18px;
+}
+
 @media (max-width: 1000px) {
   .app {
     grid-template-columns: 72px 220px minmax(0, 1fr);

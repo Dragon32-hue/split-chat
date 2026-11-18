@@ -197,8 +197,7 @@
           <span id="my-avatar" class="avatar small"></span>
           <span class="user-bar-text"><strong id="my-display"></strong><small id="my-username"></small></span>
         </button>
-        <button id="edit-profile" type="button" class="icon-button" title="Edit profile"><svg class="icon"><use href="#i-edit"></use></svg></button>
-        <button id="logout" type="button" class="icon-button" title="Log out"><svg class="icon"><use href="#i-logout"></use></svg></button>
+        <button id="user-settings" type="button" class="icon-button" title="Settings"><svg class="icon"><use href="#i-settings"></use></svg></button>
       </div>
     </aside>
 
@@ -243,45 +242,79 @@
       <p id="profile-joined" class="muted small-text"></p>
       <div class="modal-actions">
         <button id="profile-message" type="button" class="primary">Message</button>
-        <button id="profile-edit" type="button" class="secondary">Edit Profile</button>
+        <button id="profile-edit" type="button" class="secondary">Settings</button>
       </div>
     </div>
   </div>
 
-  <div id="edit-modal" class="modal hidden">
-    <div class="modal-backdrop" data-close="edit-modal"></div>
-    <form id="edit-form" class="modal-card edit-card">
-      <button type="button" class="modal-close" data-close="edit-modal"><svg class="icon"><use href="#i-close"></use></svg></button>
-      <h2>Edit Profile</h2>
-      <label for="edit-display">Display name</label>
-      <input id="edit-display" maxlength="24" required />
-      <div class="field-row">
-        <div>
-          <label for="edit-avatar">Avatar</label>
-          <select id="edit-avatar"></select>
-        </div>
-        <div>
-          <label for="edit-color">Color</label>
-          <select id="edit-color"></select>
-        </div>
+  <div id="user-settings-modal" class="modal hidden">
+    <div class="modal-backdrop" data-close="user-settings-modal"></div>
+    <div class="modal-card wide settings-card">
+      <button type="button" class="modal-close" data-close="user-settings-modal"><svg class="icon"><use href="#i-close"></use></svg></button>
+      <h2>Settings</h2>
+      <div class="auth-tabs">
+        <button id="tab-profile-settings" type="button" class="auth-tab active">Profile</button>
+        <button id="tab-appearance-settings" type="button" class="auth-tab">Appearance</button>
+        <button id="tab-account-settings" type="button" class="auth-tab">Account</button>
       </div>
-      <label for="edit-status">Status</label>
-      <select id="edit-status">
-        <option value="online">Online</option>
-        <option value="idle">Idle</option>
-        <option value="dnd">Do not disturb</option>
-      </select>
-      <label for="edit-bio">About me</label>
-      <textarea id="edit-bio" maxlength="160" rows="3"></textarea>
-      <label for="edit-image">Profile picture</label>
-      <div class="image-field">
-        <img id="edit-image-preview" class="image-preview hidden" alt="Profile picture preview" />
-        <input id="edit-image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
-        <button id="edit-remove-image" type="button" class="secondary small-button hidden">Remove photo</button>
+
+      <form id="edit-form" class="settings-tab">
+        <label for="edit-display">Display name</label>
+        <input id="edit-display" maxlength="24" required />
+        <div class="field-row">
+          <div>
+            <label for="edit-avatar">Avatar</label>
+            <select id="edit-avatar"></select>
+          </div>
+          <div>
+            <label for="edit-color">Color</label>
+            <select id="edit-color"></select>
+          </div>
+        </div>
+        <label for="edit-status">Status</label>
+        <select id="edit-status">
+          <option value="online">Online</option>
+          <option value="idle">Idle</option>
+          <option value="dnd">Do not disturb</option>
+        </select>
+        <label for="edit-bio">About me</label>
+        <textarea id="edit-bio" maxlength="160" rows="3"></textarea>
+        <label for="edit-image">Profile picture</label>
+        <div class="image-field">
+          <img id="edit-image-preview" class="image-preview hidden" alt="Profile picture preview" />
+          <input id="edit-image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+          <button id="edit-remove-image" type="button" class="secondary small-button hidden">Remove photo</button>
+        </div>
+        <p id="edit-error" class="error"></p>
+        <button type="submit" class="primary full">Save Profile</button>
+      </form>
+
+      <form id="appearance-form" class="settings-tab hidden">
+        <label for="theme-select">Theme</label>
+        <select id="theme-select">
+          <option value="midnight">Midnight (default)</option>
+          <option value="charcoal">Charcoal</option>
+          <option value="light">Light</option>
+          <option value="ocean">Ocean</option>
+          <option value="forest">Forest</option>
+        </select>
+        <label for="accent-select">Accent color</label>
+        <select id="accent-select"></select>
+        <label class="check-row" for="compact-toggle">
+          <input id="compact-toggle" type="checkbox" />
+          <span>Compact mode <span class="hint">(tighter spacing)</span></span>
+        </label>
+        <p id="appearance-error" class="error"></p>
+        <button type="submit" class="primary full">Save Appearance</button>
+      </form>
+
+      <div id="account-tab" class="settings-tab hidden">
+        <p class="muted small-text">Signed in as <strong id="settings-username"></strong></p>
+        <p class="muted small-text">You stay logged in on this device until you log out here.</p>
+        <p class="error" id="logout-error"></p>
+        <button id="settings-logout" type="button" class="secondary full">Log Out</button>
       </div>
-      <p id="edit-error" class="error"></p>
-      <button type="submit" class="primary full">Save Changes</button>
-    </form>
+    </div>
   </div>
 
   <div id="dm-modal" class="modal hidden">

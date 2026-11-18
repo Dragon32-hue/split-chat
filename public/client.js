@@ -33,6 +33,7 @@ const SERVER_ICONS = [
   'globe', 'message', 'gamepad', 'headphones', 'palette', 'rocket',
   'pizza', 'ghost', 'bolt', 'moon', 'flame', 'shield'
 ];
+const THEMES = ['midnight', 'charcoal', 'light', 'ocean', 'forest'];
 
 function byId(id) {
   return document.getElementById(id);
@@ -78,7 +79,7 @@ const myAvatarEl = byId('my-avatar');
 const myDisplayEl = byId('my-display');
 const myUsernameEl = byId('my-username');
 const profileModal = byId('profile-modal');
-const editModal = byId('edit-modal');
+const userSettingsModal = byId('user-settings-modal');
 const dmModal = byId('dm-modal');
 const serverRail = byId('server-rail');
 const serverTitle = byId('server-title');
@@ -183,9 +184,18 @@ function joinWithToken() {
   });
 }
 
+function applyAppearance(profile) {
+  if (!profile) return;
+  document.body.dataset.theme = THEMES.includes(profile.theme) ? profile.theme : THEMES[0];
+  document.body.classList.toggle('compact', !!profile.compact);
+  const accent = COLORS.find((color) => color.value === profile.accent);
+  document.documentElement.style.setProperty('--accent', accent ? accent.value : COLORS[0].value);
+}
+
 function onJoined(profile) {
   const firstJoin = !me;
   me = profile;
+  applyAppearance(profile);
   authScreen.classList.add('hidden');
   app.classList.remove('hidden');
   updateMyBar();
@@ -883,7 +893,20 @@ function openProfile(profile) {
   profileModal.classList.remove('hidden');
 }
 
-function openEdit() {
+function setSettingsTab(tab) {
+  const tabs = {
+    profile: 'tab-profile-settings',
+    appearance: 'tab-appearance-settings',
+    account: 'tab-account-settings'
+  };
+  Object.entries(tabs).forEach(([name, id]) => byId(id).classList.toggle('active', name === tab));
+  byId('edit-form').classList.toggle('hidden', tab !== 'profile');
+  byId('appearance-form').classList.toggle('hidden', tab !== 'appearance');
+  byId('account-tab').classList.toggle('hidden', tab !== 'account');
+}
+
+function openUserSettings(tab = 'profile') {
+  if (!me) return;
   byId('edit-display').value = me.displayName;
   byId('edit-avatar').value = me.avatar;
   byId('edit-color').value = me.color;
@@ -899,7 +922,18 @@ function openEdit() {
   }
   byId('edit-remove-image').classList.toggle('hidden', !pendingEditImage);
   byId('edit-error').textContent = '';
-  editModal.classList.remove('hidden');
+
+  byId('theme-select').value = THEMES.includes(me.theme) ? me.theme : THEMES[0];
+  byId('accent-select').value = COLORS.some((color) => color.value === me.accent)
+    ? me.accent
+    : COLORS[0].value;
+  byId('compact-toggle').checked = !!me.compact;
+  byId('appearance-error').textContent = '';
+  byId('settings-username').textContent = `@${me.username}`;
+  byId('logout-error').textContent = '';
+
+  setSettingsTab(tab);
+  userSettingsModal.classList.remove('hidden');
 }
 
 async function fileToAvatarData(file) {
@@ -958,6 +992,7 @@ fillSelect(
   SERVER_ICONS.map((name) => name[0].toUpperCase() + name.slice(1))
 );
 fillSelect(byId('role-color'), COLORS.map((color) => color.value), COLORS.map((color) => color.label));
+fillSelect(byId('accent-select'), COLORS.map((color) => color.value), COLORS.map((color) => color.label));
 
 byId('tab-login').addEventListener('click', () => setAuthMode('login'));
 byId('tab-register').addEventListener('click', () => setAuthMode('register'));
@@ -1141,7 +1176,11 @@ document.addEventListener('click', (event) => {
 });
 
 byId('my-profile').addEventListener('click', () => openProfile(me));
-byId('edit-profile').addEventListener('click', openEdit);
+byId('user-settings').addEventListener('click', () => openUserSettings('profile'));
+
+byId('tab-profile-settings').addEventListener('click', () => setSettingsTab('profile'));
+byId('tab-appearance-settings').addEventListener('click', () => setSettingsTab('appearance'));
+byId('tab-account-settings').addEventListener('click', () => setSettingsTab('account'));
 
 byId('profile-message').addEventListener('click', () => {
   profileModal.classList.add('hidden');
@@ -1150,7 +1189,7 @@ byId('profile-message').addEventListener('click', () => {
 
 byId('profile-edit').addEventListener('click', () => {
   profileModal.classList.add('hidden');
-  openEdit();
+  openUserSettings('profile');
 });
 
 byId('edit-form').addEventListener('submit', async (event) => {
@@ -1176,8 +1215,33 @@ byId('edit-form').addEventListener('submit', async (event) => {
     });
     me = data.profile;
     updateMyBar();
-    editModal.classList.add('hidden');
+    applyAppearance(me);
+    userSettingsModal.classList.add('hidden');
   } catch (error) {
+    errorEl.textContent = error.message;
+  }
+});
+
+byId('appearance-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const errorEl = byId('appearance-error');
+  errorEl.textContent = '';
+  try {
+    const data = await api('/api/profile', {
+      token,
+      profile: {
+        theme: byId('theme-select').value,
+        accent: byId('accent-select').value,
+        compact: byId('compact-toggle').checked
+      }
+    });
+    me = data.profile;
+    applyAppearance(me);
+    errorEl.style.color = '#57f287';
+    errorEl.textContent = 'Appearance saved.';
+    setTimeout(() => { errorEl.textContent = ''; }, 1800);
+  } catch (error) {
+    errorEl.style.color = '';
     errorEl.textContent = error.message;
   }
 });
@@ -1197,7 +1261,7 @@ byId('dm-form').addEventListener('submit', (event) => {
   setView('dm', username);
 });
 
-byId('logout').addEventListener('click', async () => {
+async function logout() {
   try {
     await api('/api/logout', { token });
   } catch (error) {
@@ -1210,10 +1274,13 @@ byId('logout').addEventListener('click', async () => {
   activeServerId = null;
   view = { type: 'home' };
   localStorage.removeItem(TOKEN_KEY);
+  userSettingsModal.classList.add('hidden');
   socket.disconnect();
   socket.connect();
   showAuth();
-});
+}
+
+byId('settings-logout').addEventListener('click', logout);
 
 document.querySelectorAll('[data-close]').forEach((button) => {
   button.addEventListener('click', () => byId(button.dataset.close).classList.add('hidden'));
@@ -1221,7 +1288,7 @@ document.querySelectorAll('[data-close]').forEach((button) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
-    [profileModal, editModal, dmModal, serverModal, channelModal, settingsModal, emojiPicker, reactionPicker]
+    [profileModal, userSettingsModal, dmModal, serverModal, channelModal, settingsModal, emojiPicker, reactionPicker]
       .forEach((element) => element.classList.add('hidden'));
   }
 });
@@ -1327,5 +1394,6 @@ socket.on('profile:updated', (profile) => {
   if (me && profile.username === me.username) {
     me = profile;
     updateMyBar();
+    applyAppearance(me);
   }
 });

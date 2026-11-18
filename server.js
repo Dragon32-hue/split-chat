@@ -11,10 +11,11 @@ const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
 const MAX_HISTORY = 100;
-const SESSION_DAYS = 7;
+const SESSION_DAYS = 3650;
 
 const AVATARS = ['👤', '😀', '🎮', '🦊', '🐱', '🌙', '⚡', '🎨', '🚀', '🍕', '👾', '🧙'];
 const COLORS = ['#5865f2', '#eb459e', '#57f287', '#fee75c', '#ed4245', '#00b0f4'];
+const THEMES = ['midnight', 'charcoal', 'light', 'ocean', 'forest'];
 const STATUSES = ['online', 'idle', 'dnd'];
 const ALL_PERMISSIONS = ['viewChannels', 'sendMessages', 'manageChannels', 'manageRoles', 'manageServer'];
 const DEFAULT_PERMISSIONS = ['viewChannels', 'sendMessages'];
@@ -53,7 +54,10 @@ function publicProfile(profile) {
     status: profile.status,
     bio: profile.bio,
     avatarImage: profile.avatarImage || '',
-    joinedAt: profile.joinedAt
+    joinedAt: profile.joinedAt,
+    theme: pick(THEMES, profile.theme, THEMES[0]),
+    accent: pick(COLORS, profile.accent, COLORS[0]),
+    compact: !!profile.compact
   };
 }
 
@@ -66,17 +70,23 @@ function buildProfile(username, data) {
     status: pick(STATUSES, data.status, 'online'),
     bio: clean(data.bio, 160),
     avatarImage: cleanAvatarImage(data.avatarImage),
-    joinedAt: Date.now()
+    joinedAt: Date.now(),
+    theme: pick(THEMES, data.theme, THEMES[0]),
+    accent: pick(COLORS, data.accent, COLORS[0]),
+    compact: !!data.compact
   };
 }
 
 function updateProfileFields(profile, data) {
-  profile.displayName = clean(data.displayName, 24) || profile.username;
-  profile.avatar = pick(AVATARS, data.avatar, profile.avatar);
-  profile.color = pick(COLORS, data.color, profile.color);
-  profile.status = pick(STATUSES, data.status, profile.status);
-  profile.bio = clean(data.bio, 160);
+  if (data.displayName !== undefined) profile.displayName = clean(data.displayName, 24) || profile.username;
+  if (data.avatar !== undefined) profile.avatar = pick(AVATARS, data.avatar, profile.avatar);
+  if (data.color !== undefined) profile.color = pick(COLORS, data.color, profile.color);
+  if (data.status !== undefined) profile.status = pick(STATUSES, data.status, profile.status);
+  if (data.bio !== undefined) profile.bio = clean(data.bio, 160);
   if (data.avatarImage !== undefined) profile.avatarImage = cleanAvatarImage(data.avatarImage);
+  if (data.theme !== undefined) profile.theme = pick(THEMES, data.theme, profile.theme || THEMES[0]);
+  if (data.accent !== undefined) profile.accent = pick(COLORS, data.accent, profile.accent || COLORS[0]);
+  if (data.compact !== undefined) profile.compact = !!data.compact;
 }
 
 function getMembers() {
@@ -144,6 +154,10 @@ async function sessionProfile(token) {
   if (!token) return null;
   const session = await store.getSession(token);
   if (!session) return null;
+  const expiresAt = Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000;
+  if (expiresAt - session.expiresAt > 24 * 60 * 60 * 1000) {
+    await store.saveSession(token, session.username, expiresAt);
+  }
   const account = await store.getAccount(session.username);
   return account ? publicProfile(account.profile) : null;
 }
