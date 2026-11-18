@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Public Chat</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="join-screen" class="screen">
+    <form id="join-form" class="card">
+      <h1>Public Chat</h1>
+      <p class="subtitle">Pick a username and say hello.</p>
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" maxlength="20" autocomplete="nickname" placeholder="e.g. Alex" required />
+      <p id="join-error" class="error" role="alert"></p>
+      <button type="submit">Join chat</button>
+    </form>
+  </div>
+
+  <div id="chat-screen" class="screen hidden">
+    <header class="chat-header">
+      <div>
+        <h1>Public Chat</h1>
+        <p id="status" class="status">Connecting...</p>
+      </div>
+      <div class="you">You are <strong id="my-name"></strong></div>
+    </header>
+
+    <div class="layout">
+      <main class="chat-panel">
+        <ul id="messages" class="messages" aria-live="polite"></ul>
+        <form id="chat-form" class="composer">
+          <input id="message-input" type="text" maxlength="500" placeholder="Type a message..." autocomplete="off" disabled />
+          <button type="submit" id="send-button" disabled>Send</button>
+        </form>
+      </main>
+
+      <aside class="users-panel">
+        <h2>Online <span id="user-count">0</span></h2>
+        <ul id="users" class="users"></ul>
+      </aside>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/client.js"></script>
+</body>
+</html>
