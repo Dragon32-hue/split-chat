@@ -3,44 +3,151 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Public Chat</title>
+  <title>Split Chat</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div id="join-screen" class="screen">
-    <form id="join-form" class="card">
-      <h1>Public Chat</h1>
-      <p class="subtitle">Pick a username and say hello.</p>
-      <label for="username">Username</label>
-      <input id="username" name="username" type="text" maxlength="20" autocomplete="nickname" placeholder="e.g. Alex" required />
+  <div id="join-screen" class="join-screen">
+    <form id="join-form" class="join-card">
+      <div class="join-logo">💬</div>
+      <h1>Split Chat</h1>
+      <p class="subtitle">Pick a profile and jump into the conversation.</p>
+
+      <label for="join-username">Username</label>
+      <input id="join-username" maxlength="20" placeholder="e.g. alex" autocomplete="nickname" required />
+
+      <label for="join-display">Display name <span class="hint">(optional)</span></label>
+      <input id="join-display" maxlength="24" placeholder="How others see you" />
+
+      <div class="field-row">
+        <div>
+          <label for="join-avatar">Avatar</label>
+          <select id="join-avatar"></select>
+        </div>
+        <div>
+          <label for="join-status">Status</label>
+          <select id="join-status">
+            <option value="online">🟢 Online</option>
+            <option value="idle">🟡 Idle</option>
+            <option value="dnd">🔴 Do not disturb</option>
+          </select>
+        </div>
+      </div>
+
+      <label for="join-bio">About me <span class="hint">(optional)</span></label>
+      <textarea id="join-bio" maxlength="160" rows="2" placeholder="A little about you"></textarea>
+
       <p id="join-error" class="error" role="alert"></p>
-      <button type="submit">Join chat</button>
+      <button type="submit" class="primary full">Join Split Chat</button>
     </form>
   </div>
 
-  <div id="chat-screen" class="screen hidden">
-    <header class="chat-header">
-      <div>
-        <h1>Public Chat</h1>
-        <p id="status" class="status">Connecting...</p>
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">💬</span><span>Split Chat</span></div>
+      <div class="sidebar-scroll">
+        <section class="side-section">
+          <h2>Text Channels</h2>
+          <ul id="channel-list" class="side-list"></ul>
+        </section>
+        <section class="side-section">
+          <div class="section-heading">
+            <h2>Direct Messages</h2>
+            <button id="new-dm" type="button" class="icon-button" title="New direct message">+</button>
+          </div>
+          <ul id="dm-list" class="side-list"></ul>
+        </section>
       </div>
-      <div class="you">You are <strong id="my-name"></strong></div>
-    </header>
+      <div class="user-bar">
+        <button id="my-profile" type="button" class="user-bar-profile">
+          <span id="my-avatar" class="avatar small"></span>
+          <span class="user-bar-text"><strong id="my-display"></strong><small id="my-username"></small></span>
+        </button>
+        <button id="edit-profile" type="button" class="icon-button" title="Edit profile">⚙</button>
+      </div>
+    </aside>
 
-    <div class="layout">
-      <main class="chat-panel">
-        <ul id="messages" class="messages" aria-live="polite"></ul>
-        <form id="chat-form" class="composer">
-          <input id="message-input" type="text" maxlength="500" placeholder="Type a message..." autocomplete="off" disabled />
-          <button type="submit" id="send-button" disabled>Send</button>
-        </form>
-      </main>
+    <main class="main">
+      <header class="chat-header">
+        <div>
+          <h2 id="view-title">#general</h2>
+          <p id="view-topic" class="view-topic"></p>
+        </div>
+        <div id="connection-status" class="connection-status">Connecting...</div>
+      </header>
+      <ul id="messages" class="messages" aria-live="polite"></ul>
+      <div id="typing-line" class="typing-line"></div>
+      <form id="chat-form" class="composer">
+        <input id="message-input" maxlength="500" placeholder="Message #general" autocomplete="off" disabled />
+        <button id="send-button" type="submit" disabled>Send</button>
+      </form>
+    </main>
 
-      <aside class="users-panel">
-        <h2>Online <span id="user-count">0</span></h2>
-        <ul id="users" class="users"></ul>
-      </aside>
+    <aside class="members-panel">
+      <h2>Online — <span id="member-count">0</span></h2>
+      <ul id="members" class="members"></ul>
+    </aside>
+  </div>
+
+  <div id="profile-modal" class="modal hidden">
+    <div class="modal-backdrop" data-close="profile-modal"></div>
+    <div class="modal-card profile-card">
+      <button type="button" class="modal-close" data-close="profile-modal">×</button>
+      <div id="profile-banner" class="profile-banner"></div>
+      <div id="profile-avatar" class="avatar huge"></div>
+      <h2 id="profile-display"></h2>
+      <p id="profile-username" class="muted"></p>
+      <p id="profile-status" class="profile-status"></p>
+      <p id="profile-bio" class="profile-bio"></p>
+      <p id="profile-joined" class="muted small-text"></p>
+      <div class="modal-actions">
+        <button id="profile-message" type="button" class="primary">Message</button>
+        <button id="profile-edit" type="button" class="secondary">Edit Profile</button>
+      </div>
     </div>
+  </div>
+
+  <div id="edit-modal" class="modal hidden">
+    <div class="modal-backdrop" data-close="edit-modal"></div>
+    <form id="edit-form" class="modal-card edit-card">
+      <button type="button" class="modal-close" data-close="edit-modal">×</button>
+      <h2>Edit Profile</h2>
+      <label for="edit-display">Display name</label>
+      <input id="edit-display" maxlength="24" required />
+      <div class="field-row">
+        <div>
+          <label for="edit-avatar">Avatar</label>
+          <select id="edit-avatar"></select>
+        </div>
+        <div>
+          <label for="edit-color">Color</label>
+          <select id="edit-color"></select>
+        </div>
+      </div>
+      <label for="edit-status">Status</label>
+      <select id="edit-status">
+        <option value="online">🟢 Online</option>
+        <option value="idle">🟡 Idle</option>
+        <option value="dnd">🔴 Do not disturb</option>
+      </select>
+      <label for="edit-bio">About me</label>
+      <textarea id="edit-bio" maxlength="160" rows="3"></textarea>
+      <p id="edit-error" class="error"></p>
+      <button type="submit" class="primary full">Save Changes</button>
+    </form>
+  </div>
+
+  <div id="dm-modal" class="modal hidden">
+    <div class="modal-backdrop" data-close="dm-modal"></div>
+    <form id="dm-form" class="modal-card">
+      <button type="button" class="modal-close" data-close="dm-modal">×</button>
+      <h2>New Message</h2>
+      <p class="muted">Enter the username of the person you want to talk to.</p>
+      <label for="dm-username">Username</label>
+      <input id="dm-username" maxlength="20" required />
+      <p id="dm-error" class="error"></p>
+      <button type="submit" class="primary full">Open Chat</button>
+    </form>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
