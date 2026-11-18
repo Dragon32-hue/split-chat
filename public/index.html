@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Split Chat</title>
-  <link rel="stylesheet" href="/style.css?v=5" />
+  <link rel="stylesheet" href="/style.css?v=6" />
 </head>
 <body>
   <svg xmlns="http://www.w3.org/2000/svg" class="icon-sprite" aria-hidden="true">
@@ -348,13 +348,13 @@
       </div>
       <div id="server-create-fields">
         <label for="server-name">Server name</label>
-        <input id="server-name" maxlength="32" required />
+        <input id="server-name" maxlength="32" />
         <label for="server-icon-select">Icon</label>
         <select id="server-icon-select"></select>
       </div>
       <div id="server-join-fields" class="hidden">
         <label for="join-server-id">Server ID</label>
-        <input id="join-server-id" required />
+        <input id="join-server-id" />
         <p class="muted small-text">Ask the server owner for their invite ID.</p>
       </div>
       <p id="server-error" class="error"></p>
@@ -406,6 +406,6 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/client.js?v=5"></script>
+  <script src="/client.js?v=6"></script>
 </body>
 </html>

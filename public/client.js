@@ -1201,18 +1201,29 @@ byId('server-form').addEventListener('submit', async (event) => {
     return;
   }
 
+  const name = byId('server-name').value.trim();
+  const serverId = byId('join-server-id').value.trim();
+  if (mode === 'create' && !name) {
+    errorEl.textContent = 'Enter a server name.';
+    return;
+  }
+  if (mode !== 'create' && !serverId) {
+    errorEl.textContent = 'Enter a server ID.';
+    return;
+  }
+
   submitButton.disabled = true;
   submitButton.textContent = mode === 'create' ? 'Creating...' : 'Joining...';
   try {
     const data = mode === 'create'
       ? await api('/api/servers/create', {
           token,
-          name: byId('server-name').value.trim(),
-          icon: `i:${byId('server-icon-select').value}`
+          name,
+          icon: `i:${byId('server-icon-select').value || 'globe'}`
         })
       : await api('/api/servers/join', {
           token,
-          serverId: byId('join-server-id').value.trim()
+          serverId
         });
     activeServerId = data.server.id;
     serverModal.classList.add('hidden');
