@@ -6,7 +6,7 @@ const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'accounts.json');
 
 let pool = null;
-let fileData = { accounts: {}, sessions: {}, servers: {}, memberships: [], roles: [], channels: [], friends: [] };
+let fileData = { accounts: {}, sessions: {}, servers: {}, memberships: [], roles: [], channels: [], friends: [], bans: [] };
 
 function normalizeDatabaseUrl(value) {
   let url = String(value || '').trim();
@@ -77,6 +77,13 @@ async function init() {
       server_id TEXT NOT NULL,
       username TEXT NOT NULL,
       role_id TEXT NOT NULL,
+      muted BOOLEAN NOT NULL DEFAULT false,
+      PRIMARY KEY (server_id, username)
+    )`);
+    await pool.query(`ALTER TABLE server_members ADD COLUMN IF NOT EXISTS muted BOOLEAN NOT NULL DEFAULT false`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS server_bans (
+      server_id TEXT NOT NULL,
+      username TEXT NOT NULL,
       PRIMARY KEY (server_id, username)
     )`);
     await pool.query(`CREATE TABLE IF NOT EXISTS roles (
@@ -108,7 +115,7 @@ async function init() {
     try {
       fileData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     } catch (error) {
-      fileData = { accounts: {}, sessions: {}, servers: {}, memberships: [], roles: [], channels: [], friends: [] };
+      fileData = { accounts: {}, sessions: {}, servers: {}, memberships: [], roles: [], channels: [], friends: [], bans: [] };
     }
   }
   if (!fileData.accounts) fileData.accounts = {};
@@ -118,6 +125,7 @@ async function init() {
   if (!fileData.roles) fileData.roles = [];
   if (!fileData.channels) fileData.channels = [];
   if (!fileData.friends) fileData.friends = [];
+  if (!fileData.bans) fileData.bans = [];
 }
 
 function saveFile() {
@@ -236,10 +244,12 @@ async function getMembership(serverId, username) {
   const key = username.toLowerCase();
   if (pool) {
     const result = await pool.query(
-      'SELECT role_id FROM server_members WHERE server_id = $1 AND username = $2',
+      'SELECT role_id, muted FROM server_members WHERE server_id = $1 AND username = $2',
       [serverId, key]
     );
-    return result.rows[0] ? { serverId, username: key, roleId: result.rows[0].role_id } : null;
+    return result.rows[0]
+      ? { serverId, username: key, roleId: result.rows[0].role_id, muted: !!result.rows[0].muted }
+      : null;
   }
   return fileData.memberships.find((item) => item.serverId === serverId && item.username === key) || null;
 }
@@ -256,17 +266,19 @@ async function getServersFor(username) {
     for (const membership of memberResult.rows) {
       const server = await getServerById(membership.server_id);
       if (!server) continue;
-      const [channels, roles, members] = await Promise.all([
+      const [channels, roles, members, bans] = await Promise.all([
         pool.query('SELECT * FROM channels WHERE server_id = $1 ORDER BY name', [server.id]),
         pool.query('SELECT * FROM roles WHERE server_id = $1 ORDER BY name', [server.id]),
-        pool.query('SELECT username, role_id FROM server_members WHERE server_id = $1', [server.id])
+        pool.query('SELECT username, role_id, muted FROM server_members WHERE server_id = $1', [server.id]),
+        pool.query('SELECT username FROM server_bans WHERE server_id = $1', [server.id])
       ]);
       servers.push({
         ...server,
         myRoleId: membership.role_id,
         channels: channels.rows.map(mapChannel),
         roles: roles.rows.map(mapRole),
-        members: members.rows.map((row) => ({ username: row.username, roleId: row.role_id }))
+        members: members.rows.map((row) => ({ username: row.username, roleId: row.role_id, muted: !!row.muted })),
+        bans: bans.rows.map((row) => ({ username: row.username }))
       });
     }
     return servers;
@@ -283,7 +295,10 @@ async function getServersFor(username) {
       roles: fileData.roles.filter((role) => role.serverId === server.id),
       members: fileData.memberships
         .filter((item) => item.serverId === server.id)
-        .map((item) => ({ username: item.username, roleId: item.roleId }))
+        .map((item) => ({ username: item.username, roleId: item.roleId, muted: !!item.muted })),
+      bans: fileData.bans
+        .filter((item) => item.serverId === server.id)
+        .map((item) => ({ username: item.username }))
     });
   });
   return servers;
@@ -314,7 +329,7 @@ async function createServer(username, name, icon, allPermissions, memberPermissi
 
   fileData.servers[serverId] = server;
   fileData.roles.push(ownerRole, memberRole);
-  fileData.memberships.push({ serverId, username: key, roleId: 'owner' });
+  fileData.memberships.push({ serverId, username: key, roleId: 'owner', muted: false });
   fileData.channels.push(channel);
   saveFile();
   return (await getServersFor(key)).find((item) => item.id === serverId);
@@ -323,13 +338,13 @@ async function createServer(username, name, icon, allPermissions, memberPermissi
 async function joinServer(serverId, username) {
   const key = username.toLowerCase();
   const server = await getServerById(serverId);
-  if (!server || await getMembership(serverId, key)) return null;
+  if (!server || await getMembership(serverId, key) || await isBanned(serverId, key)) return null;
 
   if (pool) {
-    await pool.query('INSERT INTO server_members (server_id, username, role_id) VALUES ($1,$2,$3)',
+    await pool.query('INSERT INTO server_members (server_id, username, role_id, muted) VALUES ($1,$2,$3,false)',
       [serverId, key, 'member']);
   } else {
-    fileData.memberships.push({ serverId, username: key, roleId: 'member' });
+    fileData.memberships.push({ serverId, username: key, roleId: 'member', muted: false });
     saveFile();
   }
   return (await getServersFor(key)).find((item) => item.id === serverId);
@@ -479,6 +494,94 @@ async function removeFriend(username, other) {
   return true;
 }
 
+async function isBanned(serverId, username) {
+  const key = username.toLowerCase();
+  if (pool) {
+    const result = await pool.query(
+      'SELECT 1 FROM server_bans WHERE server_id = $1 AND username = $2',
+      [serverId, key]
+    );
+    return !!result.rows.length;
+  }
+  return fileData.bans.some((item) => item.serverId === serverId && item.username === key);
+}
+
+async function setMemberMuted(serverId, username, muted) {
+  const key = username.toLowerCase();
+  if (pool) {
+    await pool.query(
+      'UPDATE server_members SET muted = $1 WHERE server_id = $2 AND username = $3',
+      [muted, serverId, key]
+    );
+    return;
+  }
+  const membership = fileData.memberships.find((item) => item.serverId === serverId && item.username === key);
+  if (membership) membership.muted = !!muted;
+  saveFile();
+}
+
+async function kickMember(serverId, username) {
+  const key = username.toLowerCase();
+  if (pool) {
+    await pool.query('DELETE FROM server_members WHERE server_id = $1 AND username = $2', [serverId, key]);
+    return;
+  }
+  fileData.memberships = fileData.memberships.filter(
+    (item) => !(item.serverId === serverId && item.username === key)
+  );
+  saveFile();
+}
+
+async function banMember(serverId, username) {
+  const key = username.toLowerCase();
+  if (pool) {
+    await pool.query(
+      'INSERT INTO server_bans (server_id, username) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+      [serverId, key]
+    );
+    await pool.query('DELETE FROM server_members WHERE server_id = $1 AND username = $2', [serverId, key]);
+    return;
+  }
+  if (!await isBanned(serverId, key)) fileData.bans.push({ serverId, username: key });
+  fileData.memberships = fileData.memberships.filter(
+    (item) => !(item.serverId === serverId && item.username === key)
+  );
+  saveFile();
+}
+
+async function unbanMember(serverId, username) {
+  const key = username.toLowerCase();
+  if (pool) {
+    await pool.query('DELETE FROM server_bans WHERE server_id = $1 AND username = $2', [serverId, key]);
+    return;
+  }
+  fileData.bans = fileData.bans.filter(
+    (item) => !(item.serverId === serverId && item.username === key)
+  );
+  saveFile();
+}
+
+async function renameChannel(serverId, channelId, name) {
+  if (pool) {
+    await pool.query('UPDATE channels SET name = $1 WHERE id = $2 AND server_id = $3', [name, channelId, serverId]);
+    return;
+  }
+  const channel = fileData.channels.find((item) => item.id === channelId && item.serverId === serverId);
+  if (channel) channel.name = name;
+  saveFile();
+}
+
+async function deleteChannel(serverId, channelId) {
+  if (pool) {
+    await pool.query('DELETE FROM channels WHERE id = $1 AND server_id = $2', [channelId, serverId]);
+    return;
+  }
+  fileData.channels = fileData.channels.filter(
+    (item) => !(item.id === channelId && item.serverId === serverId)
+  );
+  saveFile();
+}
+
 async function setServerBanner(serverId, banner) {
   if (pool) {
     await pool.query('UPDATE servers SET banner = $1 WHERE id = $2', [banner, serverId]);
@@ -503,8 +606,15 @@ module.exports = {
   createServer,
   joinServer,
   setServerBanner,
+  isBanned,
+  setMemberMuted,
+  kickMember,
+  banMember,
+  unbanMember,
   getChannel,
   createChannel,
+  renameChannel,
+  deleteChannel,
   getRole,
   createRole,
   setMemberRole,

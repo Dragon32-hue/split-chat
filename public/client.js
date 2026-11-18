@@ -377,6 +377,36 @@ function setServer(serverId) {
   else setView('home');
 }
 
+async function renameChannel(channel) {
+  const server = activeServer();
+  if (!server) return;
+  const answer = prompt('Rename channel', channel.name);
+  if (answer === null) return;
+  const name = answer.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '');
+  if (!/^[a-z0-9][a-z0-9_-]{0,23}$/.test(name)) {
+    typingLine.textContent = 'Use 1-24 lowercase letters, numbers, - or _.';
+    setTimeout(renderTyping, 3000);
+    return;
+  }
+  try {
+    await api('/api/servers/channel/rename', { token, serverId: server.id, channelId: channel.id, name });
+  } catch (error) {
+    typingLine.textContent = error.message;
+    setTimeout(renderTyping, 3000);
+  }
+}
+
+async function removeChannel(channel) {
+  const server = activeServer();
+  if (!server || !confirm(`Delete #${channel.name}?`)) return;
+  try {
+    await api('/api/servers/channel/delete', { token, serverId: server.id, channelId: channel.id });
+  } catch (error) {
+    typingLine.textContent = error.message;
+    setTimeout(renderTyping, 3000);
+  }
+}
+
 function renderChannels() {
   channelList.replaceChildren();
   const server = activeServer();
@@ -408,6 +438,8 @@ function renderChannels() {
 
   activeChannels().forEach((channel) => {
     const item = document.createElement('li');
+    const row = document.createElement('div');
+    row.className = 'channel-row';
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'side-item';
@@ -422,7 +454,34 @@ function renderChannels() {
 
     button.append(hash, name);
     button.addEventListener('click', () => setView('channel', channel.id));
-    item.append(button);
+    row.append(button);
+
+    if (inServer && hasPermission('manageChannels')) {
+      const controls = document.createElement('div');
+      controls.className = 'channel-controls';
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'channel-control';
+      edit.title = 'Rename channel';
+      edit.append(svgIcon('edit'));
+      edit.addEventListener('click', (event) => {
+        event.stopPropagation();
+        renameChannel(channel);
+      });
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'channel-control delete';
+      remove.title = 'Delete channel';
+      remove.append(svgIcon('trash'));
+      remove.addEventListener('click', (event) => {
+        event.stopPropagation();
+        removeChannel(channel);
+      });
+      controls.append(edit, remove);
+      row.append(controls);
+    }
+
+    item.append(row);
     channelList.append(item);
   });
 
@@ -1215,6 +1274,26 @@ function openServerSettings() {
   settingsModal.classList.remove('hidden');
 }
 
+async function serverMemberAction(action, username, extra = {}) {
+  const server = activeServer();
+  if (!server) return;
+  if (action === 'kick' && !confirm(`Kick ${username} from this server?`)) return;
+  if (action === 'ban' && !confirm(`Ban ${username} from this server?`)) return;
+  try {
+    await api(`/api/servers/member/${action}`, {
+      token,
+      serverId: server.id,
+      username,
+      ...extra
+    });
+    byId('settings-error').textContent = '';
+    byId('ban-error').textContent = '';
+  } catch (error) {
+    byId('settings-error').textContent = error.message;
+    byId('ban-error').textContent = error.message;
+  }
+}
+
 function renderSettings() {
   const server = activeServer();
   if (!server) return;
@@ -1273,6 +1352,13 @@ function renderSettings() {
       owner.textContent = 'Owner';
       row.append(owner);
     } else {
+      if (member.muted) {
+        const muted = document.createElement('span');
+        muted.className = 'muted small-text';
+        muted.textContent = 'Muted';
+        row.append(muted);
+      }
+
       const select = document.createElement('select');
       server.roles.filter((role) => role.id !== 'owner').forEach((role) => {
         const option = document.createElement('option');
@@ -1296,9 +1382,58 @@ function renderSettings() {
         }
       });
       row.append(select);
+
+      if (hasPermission('manageServer')) {
+        const actions = document.createElement('div');
+        actions.className = 'member-actions';
+        const mute = document.createElement('button');
+        mute.type = 'button';
+        mute.className = 'secondary small-button';
+        mute.textContent = member.muted ? 'Unmute' : 'Mute';
+        mute.addEventListener('click', () => serverMemberAction('mute', member.username, { muted: !member.muted }));
+        const kick = document.createElement('button');
+        kick.type = 'button';
+        kick.className = 'secondary small-button';
+        kick.textContent = 'Kick';
+        kick.addEventListener('click', () => serverMemberAction('kick', member.username));
+        const ban = document.createElement('button');
+        ban.type = 'button';
+        ban.className = 'danger small-button';
+        ban.textContent = 'Ban';
+        ban.addEventListener('click', () => serverMemberAction('ban', member.username));
+        actions.append(mute, kick, ban);
+        row.append(actions);
+      }
     }
     memberBox.append(row);
   });
+
+  const canManageServer = hasPermission('manageServer');
+  byId('bans-section').classList.toggle('hidden', !canManageServer);
+  const banBox = byId('settings-bans');
+  banBox.replaceChildren();
+  if (canManageServer) {
+    const bans = server.bans || [];
+    if (!bans.length) {
+      const empty = document.createElement('p');
+      empty.className = 'muted small-text';
+      empty.textContent = 'No banned members.';
+      banBox.append(empty);
+    }
+    bans.forEach((entry) => {
+      const row = document.createElement('div');
+      row.className = 'settings-member';
+      const name = document.createElement('strong');
+      name.textContent = entry.username;
+      const unban = document.createElement('button');
+      unban.type = 'button';
+      unban.className = 'secondary small-button';
+      unban.textContent = 'Unban';
+      unban.addEventListener('click', () => serverMemberAction('unban', entry.username));
+      row.append(name, unban);
+      banBox.append(row);
+    });
+  }
 }
 
 function openProfile(profile) {

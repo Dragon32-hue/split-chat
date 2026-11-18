@@ -446,6 +446,74 @@ label {
   white-space: nowrap;
 }
 
+.channel-row {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.channel-row:hover {
+  background: var(--hover);
+}
+
+.channel-row .side-item {
+  flex: 1;
+  width: auto;
+}
+
+.channel-controls {
+  display: flex;
+  gap: 2px;
+  padding-right: 4px;
+  opacity: 0;
+}
+
+.channel-row:hover .channel-controls,
+.channel-row:focus-within .channel-controls {
+  opacity: 1;
+}
+
+.channel-control {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.channel-control .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.channel-control:hover {
+  background: var(--active);
+  color: #fff;
+}
+
+.channel-control.delete:hover {
+  color: #f28b82;
+}
+
+.member-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.danger {
+  background: #da373c;
+  color: #fff;
+}
+
+.danger:hover {
+  background: #b82d31;
+}
+
 .badge {
   min-width: 20px;
   padding: 1px 6px;

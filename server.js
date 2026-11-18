@@ -343,7 +343,7 @@ app.post('/api/servers/join', async (req, res) => {
     if (!profile) return res.status(401).json({ error: 'Please log in again.' });
 
     const server = await store.joinServer(clean(body.serverId, 40), profile.username);
-    if (!server) return res.status(404).json({ error: 'Server not found, or you are already a member.' });
+    if (!server) return res.status(404).json({ error: 'Server not found, you are banned, or you are already a member.' });
 
     await broadcastServers();
     res.json({ server });
@@ -379,6 +379,164 @@ app.post('/api/servers/channel', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Could not create the channel.' });
+  }
+});
+
+app.post('/api/servers/channel/rename', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const serverId = clean(body.serverId, 40);
+    const access = await accessTo(profile.username, serverId, 'manageChannels');
+    if (!access.server) return res.status(404).json({ error: 'Server not found.' });
+    if (!access.allowed) return res.status(403).json({ error: 'You cannot manage channels in this server.' });
+
+    const channelId = clean(body.channelId, 40);
+    const name = clean(body.name, 24).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '');
+    if (!/^[a-z0-9][a-z0-9_-]{0,23}$/.test(name)) {
+      return res.status(400).json({ error: 'Use 1-24 lowercase letters, numbers, - or _ for the channel name.' });
+    }
+    const current = (await store.getServersFor(profile.username)).find((server) => server.id === serverId);
+    if (current && current.channels.some((channel) => channel.id !== channelId && channel.name === name)) {
+      return res.status(409).json({ error: 'That channel already exists.' });
+    }
+    if (!current || !current.channels.some((channel) => channel.id === channelId)) {
+      return res.status(404).json({ error: 'Channel not found.' });
+    }
+
+    await store.renameChannel(serverId, channelId, name);
+    await broadcastServers();
+    res.json({ ok: true, name });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: `Could not rename the channel: ${error.message}` });
+  }
+});
+
+app.post('/api/servers/channel/delete', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const serverId = clean(body.serverId, 40);
+    const access = await accessTo(profile.username, serverId, 'manageChannels');
+    if (!access.server) return res.status(404).json({ error: 'Server not found.' });
+    if (!access.allowed) return res.status(403).json({ error: 'You cannot manage channels in this server.' });
+
+    const channelId = clean(body.channelId, 40);
+    const current = (await store.getServersFor(profile.username)).find((server) => server.id === serverId);
+    if (!current || !current.channels.some((channel) => channel.id === channelId)) {
+      return res.status(404).json({ error: 'Channel not found.' });
+    }
+
+    await store.deleteChannel(serverId, channelId);
+    channelMessages.delete(channelId);
+    await broadcastServers();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: `Could not delete the channel: ${error.message}` });
+  }
+});
+
+app.post('/api/servers/member/mute', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const serverId = clean(body.serverId, 40);
+    const access = await accessTo(profile.username, serverId, 'manageServer');
+    if (!access.server) return res.status(404).json({ error: 'Server not found.' });
+    if (!access.allowed) return res.status(403).json({ error: 'You cannot manage this server.' });
+
+    const username = clean(body.username, 20);
+    if (!username) return res.status(400).json({ error: 'Please choose a member.' });
+    if (username.toLowerCase() === access.server.owner.toLowerCase()) {
+      return res.status(403).json({ error: 'You cannot mute the server owner.' });
+    }
+
+    await store.setMemberMuted(serverId, username, !!body.muted);
+    await broadcastServers();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: `Could not update the member: ${error.message}` });
+  }
+});
+
+app.post('/api/servers/member/kick', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const serverId = clean(body.serverId, 40);
+    const access = await accessTo(profile.username, serverId, 'manageServer');
+    if (!access.server) return res.status(404).json({ error: 'Server not found.' });
+    if (!access.allowed) return res.status(403).json({ error: 'You cannot manage this server.' });
+
+    const username = clean(body.username, 20);
+    if (!username) return res.status(400).json({ error: 'Please choose a member.' });
+    if (username.toLowerCase() === access.server.owner.toLowerCase()) {
+      return res.status(403).json({ error: 'You cannot kick the server owner.' });
+    }
+
+    await store.kickMember(serverId, username);
+    await broadcastServers();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: `Could not kick the member: ${error.message}` });
+  }
+});
+
+app.post('/api/servers/member/ban', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const serverId = clean(body.serverId, 40);
+    const access = await accessTo(profile.username, serverId, 'manageServer');
+    if (!access.server) return res.status(404).json({ error: 'Server not found.' });
+    if (!access.allowed) return res.status(403).json({ error: 'You cannot manage this server.' });
+
+    const username = clean(body.username, 20);
+    if (!username) return res.status(400).json({ error: 'Please choose a member.' });
+    if (username.toLowerCase() === access.server.owner.toLowerCase()) {
+      return res.status(403).json({ error: 'You cannot ban the server owner.' });
+    }
+
+    await store.banMember(serverId, username);
+    await broadcastServers();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: `Could not ban the member: ${error.message}` });
+  }
+});
+
+app.post('/api/servers/member/unban', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const serverId = clean(body.serverId, 40);
+    const access = await accessTo(profile.username, serverId, 'manageServer');
+    if (!access.server) return res.status(404).json({ error: 'Server not found.' });
+    if (!access.allowed) return res.status(403).json({ error: 'You cannot manage this server.' });
+
+    await store.unbanMember(serverId, clean(body.username, 20));
+    await broadcastServers();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: `Could not unban the member: ${error.message}` });
   }
 });
 
@@ -541,6 +699,11 @@ io.on('connection', (socket) => {
     const access = await accessTo(profile.username, channel.serverId, 'sendMessages');
     if (!access.allowed) {
       socket.emit('message:error', 'You do not have permission to send messages there.');
+      return;
+    }
+    const membership = await store.getMembership(channel.serverId, profile.username);
+    if (membership && membership.muted) {
+      socket.emit('message:error', 'You are muted in this server.');
       return;
     }
 
