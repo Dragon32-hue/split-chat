@@ -16,18 +16,15 @@ const SESSION_DAYS = 7;
 const AVATARS = ['👤', '😀', '🎮', '🦊', '🐱', '🌙', '⚡', '🎨', '🚀', '🍕', '👾', '🧙'];
 const COLORS = ['#5865f2', '#eb459e', '#57f287', '#fee75c', '#ed4245', '#00b0f4'];
 const STATUSES = ['online', 'idle', 'dnd'];
-const CHANNELS = [
-  { id: 'general', name: 'general', topic: 'Talk about anything.' },
-  { id: 'random', name: 'random', topic: 'Off-topic, memes and fun.' },
-  { id: 'lounge', name: 'lounge', topic: 'Just hang out.' }
-];
+const ALL_PERMISSIONS = ['viewChannels', 'sendMessages', 'manageChannels', 'manageRoles', 'manageServer'];
+const DEFAULT_PERMISSIONS = ['viewChannels', 'sendMessages'];
 const AVATAR_IMAGE_PATTERN = /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/;
 
 app.use(express.json({ limit: '1mb' }));
 app.get('/health', (req, res) => res.status(200).send('ok'));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const channelMessages = new Map(CHANNELS.map((channel) => [channel.id, []]));
+const channelMessages = new Map();
 const dmMessages = new Map();
 const dmParticipants = new Map();
 const profiles = new Map();
@@ -121,6 +118,26 @@ function getConversations(username) {
 function pushMessage(list, message) {
   list.push(message);
   if (list.length > MAX_HISTORY) list.shift();
+}
+
+async function accessTo(username, serverId, permission) {
+  const server = await store.getServerById(serverId);
+  if (!server) return { server: null, allowed: false };
+  if (server.owner.toLowerCase() === username.toLowerCase()) {
+    return { server, allowed: true, owner: true };
+  }
+  const membership = await store.getMembership(serverId, username);
+  if (!membership) return { server, allowed: false };
+  const role = await store.getRole(serverId, membership.roleId);
+  if (!role) return { server, allowed: false };
+  return { server, allowed: role.permissions.includes(permission), role, owner: false };
+}
+
+async function broadcastServers() {
+  for (const [socketId, profile] of profiles) {
+    const target = io.sockets.sockets.get(socketId);
+    if (target) target.emit('servers:update', await store.getServersFor(profile.username));
+  }
 }
 
 async function sessionProfile(token) {
@@ -227,6 +244,127 @@ app.post('/api/logout', async (req, res) => {
   }
 });
 
+app.post('/api/servers/create', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const name = clean(body.name, 32);
+    const icon = clean(body.icon, 8) || '🌐';
+    if (!name) return res.status(400).json({ error: 'Please enter a server name.' });
+
+    const server = await store.createServer(profile.username, name, icon, ALL_PERMISSIONS, DEFAULT_PERMISSIONS);
+    await broadcastServers();
+    res.json({ server });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Could not create the server.' });
+  }
+});
+
+app.post('/api/servers/join', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const server = await store.joinServer(clean(body.serverId, 40), profile.username);
+    if (!server) return res.status(404).json({ error: 'Server not found, or you are already a member.' });
+
+    await broadcastServers();
+    res.json({ server });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Could not join that server.' });
+  }
+});
+
+app.post('/api/servers/channel', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const serverId = clean(body.serverId, 40);
+    const access = await accessTo(profile.username, serverId, 'manageChannels');
+    if (!access.server) return res.status(404).json({ error: 'Server not found.' });
+    if (!access.allowed) return res.status(403).json({ error: 'You cannot manage channels in this server.' });
+
+    const name = clean(body.name, 24).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '');
+    if (!/^[a-z0-9][a-z0-9_-]{0,23}$/.test(name)) {
+      return res.status(400).json({ error: 'Use 1-24 lowercase letters, numbers, - or _ for the channel name.' });
+    }
+    const current = (await store.getServersFor(profile.username)).find((server) => server.id === serverId);
+    if (current && current.channels.some((channel) => channel.name === name)) {
+      return res.status(409).json({ error: 'That channel already exists.' });
+    }
+
+    const channel = await store.createChannel(serverId, name, clean(body.topic, 100));
+    await broadcastServers();
+    res.json({ channel });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Could not create the channel.' });
+  }
+});
+
+app.post('/api/servers/role', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const serverId = clean(body.serverId, 40);
+    const access = await accessTo(profile.username, serverId, 'manageRoles');
+    if (!access.server) return res.status(404).json({ error: 'Server not found.' });
+    if (!access.allowed) return res.status(403).json({ error: 'You cannot manage roles in this server.' });
+
+    const name = clean(body.name, 24);
+    if (!name) return res.status(400).json({ error: 'Please enter a role name.' });
+    const permissions = Array.isArray(body.permissions)
+      ? body.permissions.filter((permission) => ALL_PERMISSIONS.includes(permission))
+      : [];
+    if (!permissions.includes('viewChannels')) permissions.push('viewChannels');
+
+    const role = await store.createRole(serverId, name, pick(COLORS, body.color, COLORS[0]), permissions);
+    await broadcastServers();
+    res.json({ role });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Could not create the role.' });
+  }
+});
+
+app.post('/api/servers/assign', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const serverId = clean(body.serverId, 40);
+    const access = await accessTo(profile.username, serverId, 'manageRoles');
+    if (!access.server) return res.status(404).json({ error: 'Server not found.' });
+    if (!access.allowed) return res.status(403).json({ error: 'You cannot assign roles in this server.' });
+
+    const username = clean(body.username, 20);
+    if (username.toLowerCase() === access.server.owner.toLowerCase()) {
+      return res.status(400).json({ error: "The server owner's role cannot be changed." });
+    }
+    const membership = await store.getMembership(serverId, username);
+    if (!membership) return res.status(404).json({ error: 'That member is not in this server.' });
+    const role = await store.getRole(serverId, clean(body.roleId, 40));
+    if (!role || role.id === 'owner') return res.status(400).json({ error: 'Choose a valid role.' });
+
+    await store.setMemberRole(serverId, username, role.id);
+    await broadcastServers();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Could not change that role.' });
+  }
+});
+
 io.on('connection', (socket) => {
   socket.on('join', async (data, reply) => {
     try {
@@ -246,8 +384,9 @@ io.on('connection', (socket) => {
       profiles.set(socket.id, profile);
       byUsername.set(profile.username.toLowerCase(), socket.id);
 
+      const servers = await store.getServersFor(profile.username);
       socket.emit('init', {
-        channels: CHANNELS,
+        servers,
         messages: Object.fromEntries(channelMessages),
         conversations: getConversations(profile.username),
         members: getMembers()
@@ -260,13 +399,22 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('message:send', (data) => {
+  socket.on('message:send', async (data) => {
     const profile = profiles.get(socket.id);
-    if (!profile || !channelMessages.has(data.channel)) return;
+    if (!profile) return;
+
+    const channel = await store.getChannel(String(data.channel || ''));
+    if (!channel) return;
+    const access = await accessTo(profile.username, channel.serverId, 'sendMessages');
+    if (!access.allowed) {
+      socket.emit('message:error', 'You do not have permission to send messages there.');
+      return;
+    }
 
     const text = clean(data.text, 500);
     if (!text) return;
 
+    if (!channelMessages.has(channel.id)) channelMessages.set(channel.id, []);
     const message = {
       id: crypto.randomUUID(),
       from: profile.username,
@@ -275,8 +423,8 @@ io.on('connection', (socket) => {
       time: Date.now(),
       reactions: {}
     };
-    pushMessage(channelMessages.get(data.channel), message);
-    io.emit('message:new', { channel: data.channel, message });
+    pushMessage(channelMessages.get(channel.id), message);
+    io.emit('message:new', { channel: channel.id, message });
   });
 
   socket.on('dm:send', (data, reply) => {

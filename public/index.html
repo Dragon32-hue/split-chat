@@ -62,15 +62,24 @@
   </div>
 
   <div id="app" class="app hidden">
+    <nav id="server-rail" class="server-rail" aria-label="Servers"></nav>
+
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">💬</span><span>Split Chat</span></div>
+      <div class="brand">
+        <span id="server-icon" class="brand-mark">💬</span>
+        <span id="server-title">Split Chat</span>
+        <button id="server-settings" type="button" class="icon-button hidden" title="Server settings">⚙</button>
+      </div>
       <div class="sidebar-scroll">
         <nav class="quick-nav">
           <button id="nav-home" type="button" class="side-item"><span class="channel-hash">🏠</span><span class="side-name">Home</span></button>
           <button id="nav-dms" type="button" class="side-item"><span class="channel-hash">✉️</span><span class="side-name">Direct Messages</span></button>
         </nav>
         <section class="side-section">
-          <h2>Text Channels</h2>
+          <div class="section-heading">
+            <h2 id="channel-heading">Text Channels</h2>
+            <button id="new-channel" type="button" class="icon-button hidden" title="Create channel">+</button>
+          </div>
           <ul id="channel-list" class="side-list"></ul>
         </section>
         <section class="side-section">
@@ -112,7 +121,7 @@
     </main>
 
     <aside class="members-panel">
-      <h2>Online — <span id="member-count">0</span></h2>
+      <h2>Members — <span id="member-count">0</span></h2>
       <ul id="members" class="members"></ul>
     </aside>
   </div>
@@ -184,6 +193,74 @@
       <p id="dm-error" class="error"></p>
       <button type="submit" class="primary full">Open Chat</button>
     </form>
+  </div>
+
+  <div id="server-modal" class="modal hidden">
+    <div class="modal-backdrop" data-close="server-modal"></div>
+    <form id="server-form" class="modal-card">
+      <button type="button" class="modal-close" data-close="server-modal">×</button>
+      <h2>Add a Server</h2>
+      <div class="auth-tabs">
+        <button id="tab-create-server" type="button" class="auth-tab active">Create</button>
+        <button id="tab-join-server" type="button" class="auth-tab">Join</button>
+      </div>
+      <div id="server-create-fields">
+        <label for="server-name">Server name</label>
+        <input id="server-name" maxlength="32" required />
+        <label for="server-icon">Icon</label>
+        <select id="server-icon"></select>
+      </div>
+      <div id="server-join-fields" class="hidden">
+        <label for="join-server-id">Server ID</label>
+        <input id="join-server-id" required />
+        <p class="muted small-text">Ask the server owner for their invite ID.</p>
+      </div>
+      <p id="server-error" class="error"></p>
+      <button id="server-submit" type="submit" class="primary full">Create Server</button>
+    </form>
+  </div>
+
+  <div id="channel-modal" class="modal hidden">
+    <div class="modal-backdrop" data-close="channel-modal"></div>
+    <form id="channel-form" class="modal-card">
+      <button type="button" class="modal-close" data-close="channel-modal">×</button>
+      <h2>Create Channel</h2>
+      <p class="muted">Use lowercase letters, numbers, - or _.</p>
+      <label for="channel-name">Channel name</label>
+      <input id="channel-name" maxlength="24" placeholder="e.g. announcements" required />
+      <label for="channel-topic">Topic <span class="hint">(optional)</span></label>
+      <input id="channel-topic" maxlength="100" placeholder="What is this channel for?" />
+      <p id="channel-error" class="error"></p>
+      <button type="submit" class="primary full">Create Channel</button>
+    </form>
+  </div>
+
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-backdrop" data-close="settings-modal"></div>
+    <div class="modal-card wide">
+      <button type="button" class="modal-close" data-close="settings-modal">×</button>
+      <h2 id="settings-title">Server Settings</h2>
+      <div class="invite-line">
+        <p id="server-id-line" class="muted small-text"></p>
+        <button id="copy-server-id" type="button" class="secondary small-button">Copy invite ID</button>
+      </div>
+      <section class="settings-section">
+        <h3>Roles</h3>
+        <div id="role-list" class="role-list"></div>
+        <form id="role-form" class="inline-form">
+          <input id="role-name" maxlength="24" placeholder="New role name" required />
+          <select id="role-color"></select>
+          <div id="role-permissions" class="permission-grid"></div>
+          <button type="submit" class="secondary small-button">Create Role</button>
+        </form>
+        <p id="role-error" class="error"></p>
+      </section>
+      <section class="settings-section">
+        <h3>Members</h3>
+        <div id="settings-members" class="settings-members"></div>
+        <p id="settings-error" class="error"></p>
+      </section>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>

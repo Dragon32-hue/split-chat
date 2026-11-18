@@ -212,8 +212,57 @@ label {
 
 .app {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 220px;
+  grid-template-columns: 72px 240px minmax(0, 1fr) 220px;
   height: 100vh;
+}
+
+.server-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-height: 0;
+  padding: 12px 0;
+  overflow-y: auto;
+  background: var(--sidebar-dark);
+}
+
+.server-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 50%;
+  background: #313338;
+  color: var(--text);
+  font-size: 1.5rem;
+  line-height: 1;
+  transition: border-radius 0.15s ease, background 0.15s ease;
+}
+
+.server-icon:hover {
+  border-radius: 16px;
+  background: var(--accent);
+}
+
+.server-icon.active {
+  border-radius: 16px;
+  background: var(--accent);
+}
+
+.server-icon.add {
+  color: #23a55a;
+  font-size: 1.8rem;
+}
+
+.server-divider {
+  width: 32px;
+  height: 2px;
+  flex: none;
+  border-radius: 1px;
+  background: #3f4147;
 }
 
 .sidebar {
@@ -237,6 +286,13 @@ label {
 
 .brand-mark {
   font-size: 1.3rem;
+}
+
+#server-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-scroll {
@@ -885,9 +941,121 @@ label {
   flex: 1;
 }
 
+.modal-card.wide {
+  width: min(100%, 620px);
+}
+
+.settings-section {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid #3f4147;
+}
+
+.settings-section h3 {
+  margin: 0 0 12px;
+  color: #f2f3f5;
+  font-size: 0.95rem;
+}
+
+.invite-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.invite-line p {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role-list,
+.settings-members {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.role-item,
+.settings-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #2b2d31;
+}
+
+.role-item strong,
+.settings-member strong {
+  flex: 1;
+  font-size: 0.87rem;
+}
+
+.role-dot {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.role-permissions {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.settings-member select {
+  width: 150px;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+}
+
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.inline-form input {
+  flex: 1;
+  min-width: 150px;
+}
+
+.inline-form select {
+  width: auto;
+  min-width: 110px;
+}
+
+.permission-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 10px;
+  width: 100%;
+  margin: 4px 0;
+}
+
+.permission-grid label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.permission-grid input {
+  width: auto;
+  padding: 0;
+}
+
 @media (max-width: 1000px) {
   .app {
-    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-columns: 72px 220px minmax(0, 1fr);
   }
 
   .members-panel {
@@ -897,7 +1065,13 @@ label {
 
 @media (max-width: 640px) {
   .app {
-    grid-template-columns: 130px minmax(0, 1fr);
+    grid-template-columns: 56px 130px minmax(0, 1fr);
+  }
+
+  .server-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
   }
 
   .brand {

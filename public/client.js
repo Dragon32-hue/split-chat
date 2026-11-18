@@ -21,6 +21,15 @@ const EMOJIS = [
   '❗', '💤', '🫡', '🤖', '🧙', '🎵', '🏆', '🥺'
 ];
 const TOKEN_KEY = 'split-chat-token';
+const ALL_PERMISSIONS = ['viewChannels', 'sendMessages', 'manageChannels', 'manageRoles', 'manageServer'];
+const PERMISSION_LABELS = {
+  viewChannels: 'View channels',
+  sendMessages: 'Send messages',
+  manageChannels: 'Manage channels',
+  manageRoles: 'Manage roles',
+  manageServer: 'Manage server'
+};
+const SERVER_ICONS = ['🌐', '💬', '🎮', '🎧', '🎨', '🚀', '🍕', '👾', '🧙', '⚡', '🌙', '🔥'];
 
 function byId(id) {
   return document.getElementById(id);
@@ -52,11 +61,22 @@ const myUsernameEl = byId('my-username');
 const profileModal = byId('profile-modal');
 const editModal = byId('edit-modal');
 const dmModal = byId('dm-modal');
+const serverRail = byId('server-rail');
+const serverTitle = byId('server-title');
+const serverIcon = byId('server-icon');
+const serverSettings = byId('server-settings');
+const channelHeading = byId('channel-heading');
+const newChannel = byId('new-channel');
+const serverModal = byId('server-modal');
+const channelModal = byId('channel-modal');
+const settingsModal = byId('settings-modal');
 
 let token = localStorage.getItem(TOKEN_KEY) || '';
 let me = null;
 let connected = false;
-let channels = [];
+let servers = [];
+let activeServerId = null;
+let serverMode = 'create';
 let messagesByChannel = {};
 let conversations = {};
 let members = [];
@@ -70,6 +90,27 @@ let localTypingKey = '';
 let pendingRegImage = '';
 let pendingEditImage = '';
 let reactionTarget = null;
+
+function activeServer() {
+  return servers.find((server) => server.id === activeServerId) || null;
+}
+
+function activeChannels() {
+  const server = activeServer();
+  return server ? server.channels : [];
+}
+
+function myPermissions() {
+  const server = activeServer();
+  if (!server || !me) return [];
+  if (server.owner === me.username.toLowerCase()) return ALL_PERMISSIONS;
+  const role = server.roles.find((item) => item.id === server.myRoleId);
+  return role ? role.permissions : [];
+}
+
+function hasPermission(permission) {
+  return myPermissions().includes(permission);
+}
 
 async function api(path, body) {
   const response = await fetch(path, {
@@ -175,6 +216,7 @@ function typingKey(scope, target) {
 }
 
 function renderAll() {
+  renderServerRail();
   renderChannels();
   renderDMs();
   renderMembers();
@@ -183,9 +225,55 @@ function renderAll() {
   updateComposerState();
 }
 
+function makeServerButton(text, title, className, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `server-icon ${className}`.trim();
+  button.textContent = text;
+  button.title = title;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function renderServerRail() {
+  serverRail.replaceChildren();
+  serverRail.append(makeServerButton('🏠', 'Home', view.type === 'home' ? 'active' : '', () => setView('home')));
+  serverRail.append(makeServerButton('✉️', 'Direct Messages', view.type === 'dms' ? 'active' : '', () => setView('dms')));
+
+  const divider = document.createElement('div');
+  divider.className = 'server-divider';
+  serverRail.append(divider);
+
+  servers.forEach((server) => {
+    serverRail.append(makeServerButton(
+      server.icon,
+      server.name,
+      server.id === activeServerId ? 'active' : '',
+      () => setServer(server.id)
+    ));
+  });
+
+  serverRail.append(makeServerButton('➕', 'Add a server', 'add', openServerModal));
+}
+
+function setServer(serverId) {
+  activeServerId = serverId;
+  const server = activeServer();
+  if (server && server.channels.length) setView('channel', server.channels[0].id);
+  else setView('home');
+}
+
 function renderChannels() {
   channelList.replaceChildren();
-  channels.forEach((channel) => {
+  const server = activeServer();
+
+  serverTitle.textContent = server ? server.name : 'Split Chat';
+  serverIcon.textContent = server ? server.icon : '💬';
+  channelHeading.textContent = server ? `${server.name} Channels` : 'Text Channels';
+  serverSettings.classList.toggle('hidden', !server || (!hasPermission('manageRoles') && !hasPermission('manageServer')));
+  newChannel.classList.toggle('hidden', !server || !hasPermission('manageChannels'));
+
+  activeChannels().forEach((channel) => {
     const item = document.createElement('li');
     const button = document.createElement('button');
     button.type = 'button';
@@ -204,6 +292,15 @@ function renderChannels() {
     item.append(button);
     channelList.append(item);
   });
+
+  if (server && !activeChannels().length) {
+    const empty = document.createElement('li');
+    empty.className = 'muted small-text';
+    empty.textContent = 'No channels yet.';
+    empty.style.padding = '8px';
+    channelList.append(empty);
+  }
+
   navHome.classList.toggle('active', view.type === 'home');
   navDms.classList.toggle('active', view.type === 'dms');
 }
@@ -239,9 +336,27 @@ function renderDMs() {
 }
 
 function renderMembers() {
-  memberCountEl.textContent = members.length;
+  const server = activeServer();
+  const list = server
+    ? server.members.map((member) => {
+        const online = members.find((profile) => profile.username.toLowerCase() === member.username.toLowerCase());
+        const role = server.roles.find((item) => item.id === member.roleId);
+        return {
+          profile: online || {
+            username: member.username,
+            displayName: member.username,
+            avatar: '👤',
+            color: '#5865f2',
+            status: 'offline'
+          },
+          role
+        };
+      })
+    : members.map((profile) => ({ profile, role: null }));
+
+  memberCountEl.textContent = list.length;
   membersEl.replaceChildren();
-  members.forEach((profile) => {
+  list.forEach(({ profile, role }) => {
     const item = document.createElement('li');
     const button = document.createElement('button');
     button.type = 'button';
@@ -252,9 +367,9 @@ function renderMembers() {
     text.className = 'member-text';
     const name = document.createElement('strong');
     name.textContent = profile.displayName;
-    const username = document.createElement('small');
-    username.textContent = `@${profile.username}`;
-    text.append(name, username);
+    const detail = document.createElement('small');
+    detail.textContent = role ? `@${profile.username} · ${role.name}` : `@${profile.username}`;
+    text.append(name, detail);
 
     button.append(avatar, text);
     button.addEventListener('click', () => openProfile(profile));
@@ -293,20 +408,30 @@ function renderHub() {
   title.textContent = view.type === 'home' ? `Welcome back, ${me.displayName}` : 'Direct Messages';
   const subtitle = document.createElement('p');
   subtitle.textContent = view.type === 'home'
-    ? 'Jump into a channel or catch up with your friends.'
+    ? 'Jump into a server or catch up with your friends.'
     : 'Your conversations and everyone who is online.';
   hub.append(title, subtitle);
 
   if (view.type === 'home') {
-    const channelsGrid = document.createElement('div');
-    channelsGrid.className = 'hub-grid';
-    channels.forEach((channel) => {
-      const hash = document.createElement('span');
-      hash.className = 'channel-hash';
-      hash.textContent = '#';
-      channelsGrid.append(makeHubCard(channel.name, channel.topic, hash, () => setView('channel', channel.id)));
+    const serversGrid = document.createElement('div');
+    serversGrid.className = 'hub-grid';
+    if (!servers.length) {
+      const empty = document.createElement('p');
+      empty.textContent = 'No servers yet. Click ➕ on the left to create or join one.';
+      serversGrid.append(empty);
+    }
+    servers.forEach((server) => {
+      const icon = document.createElement('span');
+      icon.className = 'channel-hash';
+      icon.textContent = server.icon;
+      serversGrid.append(makeHubCard(
+        server.name,
+        `${server.channels.length} channel${server.channels.length === 1 ? '' : 's'}`,
+        icon,
+        () => setServer(server.id)
+      ));
     });
-    hub.append(channelsGrid);
+    hub.append(serversGrid);
   }
 
   const heading = document.createElement('p');
@@ -435,10 +560,13 @@ function updateHeader() {
   const title = byId('view-title');
   const topic = byId('view-topic');
   if (view.type === 'channel') {
-    const channel = channels.find((item) => item.id === view.id);
-    title.textContent = `#${view.id}`;
-    topic.textContent = channel ? channel.topic : '';
-    messageInput.placeholder = `Message #${view.id}`;
+    const channel = activeChannels().find((item) => item.id === view.id);
+    const server = activeServer();
+    title.textContent = `#${channel ? channel.name : 'channel'}`;
+    topic.textContent = channel ? `${server ? server.name : ''} · ${channel.topic || 'No topic set'}` : '';
+    messageInput.placeholder = hasPermission('sendMessages')
+      ? `Message #${channel ? channel.name : 'channel'}`
+      : 'You can only read here';
   } else if (view.type === 'dm') {
     title.textContent = `@${view.id}`;
     topic.textContent = `Direct message with ${displayNameOf(view.id)}`;
@@ -450,7 +578,7 @@ function updateHeader() {
 }
 
 function updateComposerState() {
-  const canChat = connected && !!me && (view.type === 'channel' || view.type === 'dm');
+  const canChat = canChatNow();
   chatForm.classList.toggle('hidden', view.type === 'home' || view.type === 'dms');
   messageInput.disabled = !canChat;
   sendButton.disabled = !canChat;
@@ -458,7 +586,7 @@ function updateComposerState() {
 
 function setView(type, id) {
   clearLocalTyping();
-  view = type === 'dm' ? { type, id } : { type };
+  view = type === 'dm' || type === 'channel' ? { type, id } : { type };
   if (type === 'dms') unread.clear();
   if (type === 'dm') {
     dmNames.add(id);
@@ -475,7 +603,9 @@ function setView(type, id) {
 }
 
 function canChatNow() {
-  return connected && !!me && (view.type === 'channel' || view.type === 'dm');
+  if (!connected || !me) return false;
+  if (view.type === 'dm') return true;
+  return view.type === 'channel' && hasPermission('sendMessages');
 }
 
 function renderTyping() {
@@ -590,6 +720,119 @@ function sendReaction(emoji) {
   reactionTarget = null;
 }
 
+function openServerModal(mode = 'create') {
+  setServerMode(mode);
+  serverModal.classList.remove('hidden');
+  const focusId = mode === 'create' ? 'server-name' : 'join-server-id';
+  setTimeout(() => byId(focusId).focus(), 0);
+}
+
+function setServerMode(mode) {
+  serverMode = mode;
+  byId('tab-create-server').classList.toggle('active', mode === 'create');
+  byId('tab-join-server').classList.toggle('active', mode === 'join');
+  byId('server-create-fields').classList.toggle('hidden', mode !== 'create');
+  byId('server-join-fields').classList.toggle('hidden', mode !== 'join');
+  byId('server-submit').textContent = mode === 'create' ? 'Create Server' : 'Join Server';
+  byId('server-error').textContent = '';
+}
+
+function openChannelModal() {
+  byId('channel-name').value = '';
+  byId('channel-topic').value = '';
+  byId('channel-error').textContent = '';
+  channelModal.classList.remove('hidden');
+  setTimeout(() => byId('channel-name').focus(), 0);
+}
+
+function openServerSettings() {
+  const server = activeServer();
+  if (!server || (!hasPermission('manageRoles') && !hasPermission('manageServer'))) return;
+  byId('settings-title').textContent = `${server.name} Settings`;
+  byId('server-id-line').textContent = `Invite ID: ${server.id}`;
+  byId('role-error').textContent = '';
+  byId('settings-error').textContent = '';
+  renderSettings();
+  settingsModal.classList.remove('hidden');
+}
+
+function renderSettings() {
+  const server = activeServer();
+  if (!server) return;
+
+  const roleList = byId('role-list');
+  roleList.replaceChildren();
+  server.roles.forEach((role) => {
+    const row = document.createElement('div');
+    row.className = 'role-item';
+    const dot = document.createElement('span');
+    dot.className = 'role-dot';
+    dot.style.backgroundColor = role.color;
+    const name = document.createElement('strong');
+    name.textContent = role.name;
+    const summary = document.createElement('span');
+    summary.className = 'role-permissions';
+    summary.textContent = role.permissions.map((permission) => PERMISSION_LABELS[permission] || permission).join(', ');
+    row.append(dot, name, summary);
+    roleList.append(row);
+  });
+
+  const permissionBox = byId('role-permissions');
+  if (!permissionBox.childElementCount) {
+    ALL_PERMISSIONS.forEach((permission) => {
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = permission;
+      checkbox.dataset.permission = permission;
+      label.append(checkbox, document.createTextNode(PERMISSION_LABELS[permission]));
+      permissionBox.append(label);
+    });
+  }
+
+  const memberBox = byId('settings-members');
+  memberBox.replaceChildren();
+  server.members.forEach((member) => {
+    const row = document.createElement('div');
+    row.className = 'settings-member';
+    const name = document.createElement('strong');
+    name.textContent = member.username;
+    row.append(name);
+
+    if (member.username === server.owner) {
+      const owner = document.createElement('span');
+      owner.className = 'muted small-text';
+      owner.textContent = 'Owner';
+      row.append(owner);
+    } else {
+      const select = document.createElement('select');
+      server.roles.filter((role) => role.id !== 'owner').forEach((role) => {
+        const option = document.createElement('option');
+        option.value = role.id;
+        option.textContent = role.name;
+        select.append(option);
+      });
+      select.value = member.roleId;
+      select.addEventListener('change', async () => {
+        try {
+          await api('/api/servers/assign', {
+            token,
+            serverId: server.id,
+            username: member.username,
+            roleId: select.value
+          });
+          byId('settings-error').textContent = '';
+        } catch (error) {
+          byId('settings-error').textContent = error.message;
+          select.value = member.roleId;
+        }
+      });
+      row.append(select);
+    }
+    memberBox.append(row);
+  });
+}
+
 function openProfile(profile) {
   if (!profile) return;
   selectedProfile = profile;
@@ -679,6 +922,8 @@ buildEmojiGrid(byId('reaction-grid'), sendReaction);
 fillSelect(byId('reg-avatar'), AVATARS);
 fillSelect(byId('edit-avatar'), AVATARS);
 fillSelect(byId('edit-color'), COLORS.map((color) => color.value), COLORS.map((color) => color.label));
+fillSelect(byId('server-icon'), SERVER_ICONS);
+fillSelect(byId('role-color'), COLORS.map((color) => color.value), COLORS.map((color) => color.label));
 
 byId('tab-login').addEventListener('click', () => setAuthMode('login'));
 byId('tab-register').addEventListener('click', () => setAuthMode('register'));
@@ -716,6 +961,70 @@ registerForm.addEventListener('submit', async (event) => {
   }
 });
 
+byId('server-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const errorEl = byId('server-error');
+  errorEl.textContent = '';
+  try {
+    const data = serverMode === 'create'
+      ? await api('/api/servers/create', {
+          token,
+          name: byId('server-name').value.trim(),
+          icon: byId('server-icon').value
+        })
+      : await api('/api/servers/join', {
+          token,
+          serverId: byId('join-server-id').value.trim()
+        });
+    activeServerId = data.server.id;
+    serverModal.classList.add('hidden');
+  } catch (error) {
+    errorEl.textContent = error.message;
+  }
+});
+
+byId('channel-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const errorEl = byId('channel-error');
+  errorEl.textContent = '';
+  const server = activeServer();
+  if (!server) return;
+  try {
+    const data = await api('/api/servers/channel', {
+      token,
+      serverId: server.id,
+      name: byId('channel-name').value.trim(),
+      topic: byId('channel-topic').value.trim()
+    });
+    channelModal.classList.add('hidden');
+    setView('channel', data.channel.id);
+  } catch (error) {
+    errorEl.textContent = error.message;
+  }
+});
+
+byId('role-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const errorEl = byId('role-error');
+  errorEl.textContent = '';
+  const server = activeServer();
+  if (!server) return;
+  const permissions = [...byId('role-permissions').querySelectorAll('input:checked')]
+    .map((checkbox) => checkbox.value);
+  try {
+    await api('/api/servers/role', {
+      token,
+      serverId: server.id,
+      name: byId('role-name').value.trim(),
+      color: byId('role-color').value,
+      permissions
+    });
+    byId('role-name').value = '';
+  } catch (error) {
+    errorEl.textContent = error.message;
+  }
+});
+
 byId('reg-image').addEventListener('change', (event) => {
   handleImagePick(event.target, byId('reg-image-preview'), (data) => { pendingRegImage = data; }, registerError);
 });
@@ -736,6 +1045,22 @@ byId('edit-remove-image').addEventListener('click', () => {
 
 navHome.addEventListener('click', () => setView('home'));
 navDms.addEventListener('click', () => setView('dms'));
+serverSettings.addEventListener('click', openServerSettings);
+newChannel.addEventListener('click', openChannelModal);
+
+byId('tab-create-server').addEventListener('click', () => setServerMode('create'));
+byId('tab-join-server').addEventListener('click', () => setServerMode('join'));
+byId('copy-server-id').addEventListener('click', async () => {
+  const server = activeServer();
+  if (!server || !navigator.clipboard) return;
+  try {
+    await navigator.clipboard.writeText(server.id);
+    byId('copy-server-id').textContent = 'Copied!';
+    setTimeout(() => { byId('copy-server-id').textContent = 'Copy invite ID'; }, 1500);
+  } catch (error) {
+    byId('settings-error').textContent = 'Could not copy. Select the ID manually.';
+  }
+});
 
 byId('new-dm').addEventListener('click', () => {
   byId('dm-error').textContent = '';
@@ -847,6 +1172,9 @@ byId('logout').addEventListener('click', async () => {
   token = '';
   me = null;
   connected = false;
+  servers = [];
+  activeServerId = null;
+  view = { type: 'home' };
   localStorage.removeItem(TOKEN_KEY);
   socket.disconnect();
   socket.connect();
@@ -859,7 +1187,8 @@ document.querySelectorAll('[data-close]').forEach((button) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
-    [profileModal, editModal, dmModal, emojiPicker, reactionPicker].forEach((element) => element.classList.add('hidden'));
+    [profileModal, editModal, dmModal, serverModal, channelModal, settingsModal, emojiPicker, reactionPicker]
+      .forEach((element) => element.classList.add('hidden'));
   }
 });
 
@@ -884,16 +1213,34 @@ socket.on('auth:expired', () => {
 });
 
 socket.on('init', (data) => {
-  channels = data.channels || [];
+  servers = data.servers || [];
   messagesByChannel = data.messages || {};
   conversations = data.conversations || {};
   members = data.members || [];
   dmNames = new Set(Object.keys(conversations));
   unread.clear();
-  if (view.type === 'channel' && !channels.some((channel) => channel.id === view.id)) {
+  if (!activeServerId || !servers.some((server) => server.id === activeServerId)) {
+    activeServerId = servers.length ? servers[0].id : null;
+  }
+  if (view.type === 'channel' && !activeChannels().some((channel) => channel.id === view.id)) {
     view = { type: 'home' };
   }
   if (me) renderAll();
+});
+
+socket.on('servers:update', (list) => {
+  servers = list || [];
+  if (activeServerId && !servers.some((server) => server.id === activeServerId)) activeServerId = null;
+  if (view.type === 'channel' && !activeChannels().some((channel) => channel.id === view.id)) {
+    view = { type: 'home' };
+  }
+  if (me) renderAll();
+  if (!settingsModal.classList.contains('hidden')) renderSettings();
+});
+
+socket.on('message:error', (message) => {
+  typingLine.textContent = message;
+  setTimeout(renderTyping, 3000);
 });
 
 socket.on('members', (list) => {

@@ -1,11 +1,12 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'accounts.json');
 
 let pool = null;
-let fileData = { accounts: {}, sessions: {} };
+let fileData = { accounts: {}, sessions: {}, servers: {}, memberships: [], roles: [], channels: [] };
 
 function normalizeDatabaseUrl(value) {
   let url = String(value || '').trim();
@@ -63,6 +64,33 @@ async function init() {
       username TEXT NOT NULL,
       expires_at BIGINT NOT NULL
     )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS servers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      owner TEXT NOT NULL,
+      icon TEXT NOT NULL,
+      created_at BIGINT NOT NULL
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS server_members (
+      server_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      role_id TEXT NOT NULL,
+      PRIMARY KEY (server_id, username)
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS roles (
+      server_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      color TEXT NOT NULL,
+      permissions JSONB NOT NULL,
+      PRIMARY KEY (server_id, id)
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS channels (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      topic TEXT NOT NULL
+    )`);
     return;
   }
 
@@ -71,11 +99,15 @@ async function init() {
     try {
       fileData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     } catch (error) {
-      fileData = { accounts: {}, sessions: {} };
+      fileData = { accounts: {}, sessions: {}, servers: {}, memberships: [], roles: [], channels: [] };
     }
   }
   if (!fileData.accounts) fileData.accounts = {};
   if (!fileData.sessions) fileData.sessions = {};
+  if (!fileData.servers) fileData.servers = {};
+  if (!fileData.memberships) fileData.memberships = [];
+  if (!fileData.roles) fileData.roles = [];
+  if (!fileData.channels) fileData.channels = [];
 }
 
 function saveFile() {
@@ -84,6 +116,28 @@ function saveFile() {
 
 function normalizeProfile(profile) {
   return typeof profile === 'string' ? JSON.parse(profile) : profile;
+}
+
+function normalizePermissions(value) {
+  return typeof value === 'string' ? JSON.parse(value) : value;
+}
+
+function mapServer(row) {
+  return { id: row.id, name: row.name, owner: row.owner, icon: row.icon, createdAt: Number(row.created_at) };
+}
+
+function mapChannel(row) {
+  return { id: row.id, serverId: row.server_id, name: row.name, topic: row.topic };
+}
+
+function mapRole(row) {
+  return {
+    id: row.id,
+    serverId: row.server_id,
+    name: row.name,
+    color: row.color,
+    permissions: normalizePermissions(row.permissions)
+  };
 }
 
 async function getAccount(username) {
@@ -152,4 +206,188 @@ async function deleteSession(token) {
   saveFile();
 }
 
-module.exports = { init, getAccount, saveAccount, getSession, saveSession, deleteSession };
+async function getServerById(serverId) {
+  if (pool) {
+    const result = await pool.query('SELECT * FROM servers WHERE id = $1', [serverId]);
+    return result.rows[0] ? mapServer(result.rows[0]) : null;
+  }
+  const server = fileData.servers[serverId];
+  return server ? { ...server, createdAt: Number(server.createdAt) } : null;
+}
+
+async function getMembership(serverId, username) {
+  const key = username.toLowerCase();
+  if (pool) {
+    const result = await pool.query(
+      'SELECT role_id FROM server_members WHERE server_id = $1 AND username = $2',
+      [serverId, key]
+    );
+    return result.rows[0] ? { serverId, username: key, roleId: result.rows[0].role_id } : null;
+  }
+  return fileData.memberships.find((item) => item.serverId === serverId && item.username === key) || null;
+}
+
+async function getServersFor(username) {
+  const key = username.toLowerCase();
+  let servers = [];
+
+  if (pool) {
+    const memberResult = await pool.query(
+      'SELECT server_id, role_id FROM server_members WHERE username = $1',
+      [key]
+    );
+    for (const membership of memberResult.rows) {
+      const server = await getServerById(membership.server_id);
+      if (!server) continue;
+      const [channels, roles, members] = await Promise.all([
+        pool.query('SELECT * FROM channels WHERE server_id = $1 ORDER BY name', [server.id]),
+        pool.query('SELECT * FROM roles WHERE server_id = $1 ORDER BY name', [server.id]),
+        pool.query('SELECT username, role_id FROM server_members WHERE server_id = $1', [server.id])
+      ]);
+      servers.push({
+        ...server,
+        myRoleId: membership.role_id,
+        channels: channels.rows.map(mapChannel),
+        roles: roles.rows.map(mapRole),
+        members: members.rows.map((row) => ({ username: row.username, roleId: row.role_id }))
+      });
+    }
+    return servers;
+  }
+
+  fileData.memberships.filter((item) => item.username === key).forEach((membership) => {
+    const server = fileData.servers[membership.serverId];
+    if (!server) return;
+    servers.push({
+      ...server,
+      createdAt: Number(server.createdAt),
+      myRoleId: membership.roleId,
+      channels: fileData.channels.filter((channel) => channel.serverId === server.id),
+      roles: fileData.roles.filter((role) => role.serverId === server.id),
+      members: fileData.memberships
+        .filter((item) => item.serverId === server.id)
+        .map((item) => ({ username: item.username, roleId: item.roleId }))
+    });
+  });
+  return servers;
+}
+
+async function createServer(username, name, icon, allPermissions, memberPermissions) {
+  const key = username.toLowerCase();
+  const serverId = crypto.randomUUID();
+  const channelId = crypto.randomUUID();
+  const server = { id: serverId, name, icon, owner: key, createdAt: Date.now() };
+  const ownerRole = { id: 'owner', serverId, name: 'Owner', color: '#fee75c', permissions: allPermissions };
+  const memberRole = { id: 'member', serverId, name: 'Member', color: '#5865f2', permissions: memberPermissions };
+  const channel = { id: channelId, serverId, name: 'general', topic: 'Welcome to your server.' };
+
+  if (pool) {
+    await pool.query('INSERT INTO servers (id, name, owner, icon, created_at) VALUES ($1,$2,$3,$4,$5)',
+      [serverId, name, key, icon, server.createdAt]);
+    await pool.query('INSERT INTO roles (server_id, id, name, color, permissions) VALUES ($1,$2,$3,$4,$5)',
+      [serverId, 'owner', ownerRole.name, ownerRole.color, JSON.stringify(allPermissions)]);
+    await pool.query('INSERT INTO roles (server_id, id, name, color, permissions) VALUES ($1,$2,$3,$4,$5)',
+      [serverId, 'member', memberRole.name, memberRole.color, JSON.stringify(memberPermissions)]);
+    await pool.query('INSERT INTO server_members (server_id, username, role_id) VALUES ($1,$2,$3)',
+      [serverId, key, 'owner']);
+    await pool.query('INSERT INTO channels (id, server_id, name, topic) VALUES ($1,$2,$3,$4)',
+      [channelId, serverId, channel.name, channel.topic]);
+    return (await getServersFor(key)).find((item) => item.id === serverId);
+  }
+
+  fileData.servers[serverId] = server;
+  fileData.roles.push(ownerRole, memberRole);
+  fileData.memberships.push({ serverId, username: key, roleId: 'owner' });
+  fileData.channels.push(channel);
+  saveFile();
+  return (await getServersFor(key)).find((item) => item.id === serverId);
+}
+
+async function joinServer(serverId, username) {
+  const key = username.toLowerCase();
+  const server = await getServerById(serverId);
+  if (!server || await getMembership(serverId, key)) return null;
+
+  if (pool) {
+    await pool.query('INSERT INTO server_members (server_id, username, role_id) VALUES ($1,$2,$3)',
+      [serverId, key, 'member']);
+  } else {
+    fileData.memberships.push({ serverId, username: key, roleId: 'member' });
+    saveFile();
+  }
+  return (await getServersFor(key)).find((item) => item.id === serverId);
+}
+
+async function getChannel(channelId) {
+  if (pool) {
+    const result = await pool.query('SELECT * FROM channels WHERE id = $1', [channelId]);
+    return result.rows[0] ? mapChannel(result.rows[0]) : null;
+  }
+  const channel = fileData.channels.find((item) => item.id === channelId);
+  return channel ? { ...channel } : null;
+}
+
+async function createChannel(serverId, name, topic) {
+  const channel = { id: crypto.randomUUID(), serverId, name, topic };
+  if (pool) {
+    await pool.query('INSERT INTO channels (id, server_id, name, topic) VALUES ($1,$2,$3,$4)',
+      [channel.id, serverId, name, topic]);
+  } else {
+    fileData.channels.push(channel);
+    saveFile();
+  }
+  return channel;
+}
+
+async function getRole(serverId, roleId) {
+  if (pool) {
+    const result = await pool.query('SELECT * FROM roles WHERE server_id = $1 AND id = $2', [serverId, roleId]);
+    return result.rows[0] ? mapRole(result.rows[0]) : null;
+  }
+  const role = fileData.roles.find((item) => item.serverId === serverId && item.id === roleId);
+  return role ? { ...role, permissions: [...role.permissions] } : null;
+}
+
+async function createRole(serverId, name, color, permissions) {
+  const role = { id: crypto.randomUUID(), serverId, name, color, permissions };
+  if (pool) {
+    await pool.query('INSERT INTO roles (server_id, id, name, color, permissions) VALUES ($1,$2,$3,$4,$5)',
+      [serverId, role.id, name, color, JSON.stringify(permissions)]);
+  } else {
+    fileData.roles.push(role);
+    saveFile();
+  }
+  return role;
+}
+
+async function setMemberRole(serverId, username, roleId) {
+  const key = username.toLowerCase();
+  if (pool) {
+    await pool.query('UPDATE server_members SET role_id = $1 WHERE server_id = $2 AND username = $3',
+      [roleId, serverId, key]);
+  } else {
+    const membership = fileData.memberships.find((item) => item.serverId === serverId && item.username === key);
+    if (membership) membership.roleId = roleId;
+    saveFile();
+  }
+  return getMembership(serverId, key);
+}
+
+module.exports = {
+  init,
+  getAccount,
+  saveAccount,
+  getSession,
+  saveSession,
+  deleteSession,
+  getServerById,
+  getMembership,
+  getServersFor,
+  createServer,
+  joinServer,
+  getChannel,
+  createChannel,
+  getRole,
+  createRole,
+  setMemberRole
+};
