@@ -9,7 +9,7 @@ const COLORS = [
   { value: '#ed4245', label: 'Red' },
   { value: '#00b0f4', label: 'Blue' }
 ];
-const STATUS_LABELS = { online: '🟢 Online', idle: '🟡 Idle', dnd: '🔴 Do Not Disturb' };
+const STATUS_LABELS = { online: 'Online', idle: 'Idle', dnd: 'Do Not Disturb' };
 const EMOJIS = [
   '😀', '😂', '🥰', '😎', '🤔', '😭', '😡', '🥳',
   '😴', '🤯', '🙌', '👍', '👎', '👏', '🙏', '💪',
@@ -29,10 +29,29 @@ const PERMISSION_LABELS = {
   manageRoles: 'Manage roles',
   manageServer: 'Manage server'
 };
-const SERVER_ICONS = ['🌐', '💬', '🎮', '🎧', '🎨', '🚀', '🍕', '👾', '🧙', '⚡', '🌙', '🔥'];
+const SERVER_ICONS = [
+  'globe', 'message', 'gamepad', 'headphones', 'palette', 'rocket',
+  'pizza', 'ghost', 'bolt', 'moon', 'flame', 'shield'
+];
 
 function byId(id) {
   return document.getElementById(id);
+}
+
+function svgIcon(name, extraClass) {
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('class', `icon ${extraClass || ''}`.trim());
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', `#i-${name}`);
+  icon.append(use);
+  return icon;
+}
+
+function serverIconParts(value) {
+  const icon = String(value || '');
+  if (icon.startsWith('i:')) return { content: icon.slice(2), isIcon: true };
+  if (!icon) return { content: 'shield', isIcon: true };
+  return { content: icon, isIcon: false };
 }
 
 const authScreen = byId('auth-screen');
@@ -225,11 +244,12 @@ function renderAll() {
   updateComposerState();
 }
 
-function makeServerButton(text, title, className, onClick) {
+function makeServerButton(content, title, className, onClick, isIcon) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = `server-icon ${className}`.trim();
-  button.textContent = text;
+  if (isIcon) button.append(svgIcon(content));
+  else button.textContent = content;
   button.title = title;
   button.addEventListener('click', onClick);
   return button;
@@ -237,23 +257,25 @@ function makeServerButton(text, title, className, onClick) {
 
 function renderServerRail() {
   serverRail.replaceChildren();
-  serverRail.append(makeServerButton('🏠', 'Home', view.type === 'home' ? 'active' : '', () => setView('home')));
-  serverRail.append(makeServerButton('✉️', 'Direct Messages', view.type === 'dms' ? 'active' : '', () => setView('dms')));
+  serverRail.append(makeServerButton('home', 'Home', view.type === 'home' ? 'active' : '', () => setView('home'), true));
+  serverRail.append(makeServerButton('messages', 'Direct Messages', view.type === 'dms' ? 'active' : '', () => setView('dms'), true));
 
   const divider = document.createElement('div');
   divider.className = 'server-divider';
   serverRail.append(divider);
 
   servers.forEach((server) => {
+    const parts = serverIconParts(server.icon);
     serverRail.append(makeServerButton(
-      server.icon,
+      parts.content,
       server.name,
       server.id === activeServerId ? 'active' : '',
-      () => setServer(server.id)
+      () => setServer(server.id),
+      parts.isIcon
     ));
   });
 
-  serverRail.append(makeServerButton('➕', 'Add a server', 'add', openServerModal));
+  serverRail.append(makeServerButton('plus', 'Add a server', 'add', openServerModal, true));
 }
 
 function setServer(serverId) {
@@ -268,7 +290,13 @@ function renderChannels() {
   const server = activeServer();
 
   serverTitle.textContent = server ? server.name : 'Split Chat';
-  serverIcon.textContent = server ? server.icon : '💬';
+  serverIcon.replaceChildren();
+  if (!server) serverIcon.append(svgIcon('message', 'logo-icon'));
+  else {
+    const parts = serverIconParts(server.icon);
+    if (parts.isIcon) serverIcon.append(svgIcon(parts.content, 'logo-icon'));
+    else serverIcon.textContent = parts.content;
+  }
   channelHeading.textContent = server ? `${server.name} Channels` : 'Text Channels';
   serverSettings.classList.toggle('hidden', !server || (!hasPermission('manageRoles') && !hasPermission('manageServer')));
   newChannel.classList.toggle('hidden', !server || !hasPermission('manageChannels'));
@@ -417,13 +445,15 @@ function renderHub() {
     serversGrid.className = 'hub-grid';
     if (!servers.length) {
       const empty = document.createElement('p');
-      empty.textContent = 'No servers yet. Click ➕ on the left to create or join one.';
+      empty.textContent = 'No servers yet. Click the + button on the left to create or join one.';
       serversGrid.append(empty);
     }
     servers.forEach((server) => {
       const icon = document.createElement('span');
       icon.className = 'channel-hash';
-      icon.textContent = server.icon;
+      const parts = serverIconParts(server.icon);
+      if (parts.isIcon) icon.append(svgIcon(parts.content));
+      else icon.textContent = parts.content;
       serversGrid.append(makeHubCard(
         server.name,
         `${server.channels.length} channel${server.channels.length === 1 ? '' : 's'}`,
@@ -529,7 +559,7 @@ function appendMessage(message, scroll) {
   const reactButton = document.createElement('button');
   reactButton.type = 'button';
   reactButton.className = 'react-button';
-  reactButton.textContent = '☺+';
+  reactButton.append(svgIcon('smile-plus'));
   reactButton.title = 'Add reaction';
   reactButton.addEventListener('click', (event) => openReactionPicker(event, message));
   meta.append(author, time, reactButton);
@@ -922,7 +952,11 @@ buildEmojiGrid(byId('reaction-grid'), sendReaction);
 fillSelect(byId('reg-avatar'), AVATARS);
 fillSelect(byId('edit-avatar'), AVATARS);
 fillSelect(byId('edit-color'), COLORS.map((color) => color.value), COLORS.map((color) => color.label));
-fillSelect(byId('server-icon'), SERVER_ICONS);
+fillSelect(
+  byId('server-icon'),
+  SERVER_ICONS,
+  SERVER_ICONS.map((name) => name[0].toUpperCase() + name.slice(1))
+);
 fillSelect(byId('role-color'), COLORS.map((color) => color.value), COLORS.map((color) => color.label));
 
 byId('tab-login').addEventListener('click', () => setAuthMode('login'));
@@ -970,7 +1004,7 @@ byId('server-form').addEventListener('submit', async (event) => {
       ? await api('/api/servers/create', {
           token,
           name: byId('server-name').value.trim(),
-          icon: byId('server-icon').value
+          icon: `i:${byId('server-icon').value}`
         })
       : await api('/api/servers/join', {
           token,
