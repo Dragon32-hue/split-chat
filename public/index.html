@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Split Chat</title>
-  <link rel="stylesheet" href="/style.css?v=12" />
+  <link rel="stylesheet" href="/style.css?v=13" />
 </head>
 <body>
   <svg xmlns="http://www.w3.org/2000/svg" class="icon-sprite" aria-hidden="true">
@@ -179,7 +179,7 @@
     <nav id="server-rail" class="server-rail" aria-label="Servers"></nav>
 
     <aside class="sidebar">
-      <div class="brand">
+      <div id="sidebar-banner" class="brand">
         <span id="brand-icon" class="brand-mark"><svg class="icon logo-icon"><use href="#i-message"></use></svg></span>
         <span id="server-title">Split Chat</span>
         <button id="server-settings" type="button" class="icon-button hidden" title="Server settings"><svg class="icon"><use href="#i-settings"></use></svg></button>
@@ -215,7 +215,6 @@
     </aside>
 
     <main class="main">
-      <div id="server-banner" class="server-banner hidden"></div>
       <header class="chat-header">
         <div>
           <h2 id="view-title">Home</h2>
@@ -229,6 +228,7 @@
         <div class="composer-input-wrap">
           <button type="button" id="emoji-button" class="composer-icon" title="Emoji"><svg class="icon"><use href="#i-smile"></use></svg></button>
           <input id="message-input" maxlength="500" placeholder="Message #general" autocomplete="off" disabled />
+          <div id="mention-menu" class="mention-menu hidden"></div>
           <div id="emoji-picker" class="emoji-picker hidden"><div id="emoji-grid" class="emoji-grid"></div></div>
         </div>
         <button id="send-button" type="submit" disabled><svg class="icon"><use href="#i-send"></use></svg><span>Send</span></button>
@@ -427,6 +427,6 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/client.js?v=12"></script>
+  <script src="/client.js?v=13"></script>
 </body>
 </html>

@@ -106,10 +106,17 @@ function playNotificationSound() {
   }
 }
 
+function profileIsMentioned(profile, text) {
+  if (!profile || !text) return false;
+  const names = [profile.username, profile.displayName].filter(Boolean);
+  return names.some((name) => {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^\\w-])@${escaped}([^\\w-]|$)`, 'i').test(text);
+  });
+}
+
 function mentionsMe(text) {
-  if (!me || !text) return false;
-  const name = me.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^a-z0-9_-])@${name}([^a-z0-9_-]|$)`, 'i').test(text);
+  return profileIsMentioned(me, text);
 }
 
 const authScreen = byId('auth-screen');
@@ -132,6 +139,7 @@ const messagesEl = byId('messages');
 const typingLine = byId('typing-line');
 const chatForm = byId('chat-form');
 const messageInput = byId('message-input');
+const mentionMenu = byId('mention-menu');
 const sendButton = byId('send-button');
 const emojiPicker = byId('emoji-picker');
 const reactionPicker = byId('reaction-picker');
@@ -143,7 +151,7 @@ const userSettingsModal = byId('user-settings-modal');
 const dmModal = byId('dm-modal');
 const serverRail = byId('server-rail');
 const serverTitle = byId('server-title');
-const serverBanner = byId('server-banner');
+const serverBanner = byId('sidebar-banner');
 const serverIcon = byId('brand-icon');
 const serverSettings = byId('server-settings');
 const channelHeading = byId('channel-heading');
@@ -174,6 +182,9 @@ let localTypingKey = '';
 let pendingRegImage = '';
 let pendingEditImage = '';
 let reactionTarget = null;
+let mentionMatches = [];
+let mentionStart = -1;
+let mentionIndex = 0;
 
 function activeServer() {
   return servers.find((server) => server.id === activeServerId) || null;
@@ -389,14 +400,8 @@ function renderChannels() {
   }
 
   const banner = inServer && server.banner ? server.banner : '';
-  serverBanner.classList.toggle('hidden', !banner);
-  serverBanner.replaceChildren();
+  serverBanner.classList.toggle('has-banner', !!banner);
   serverBanner.style.backgroundImage = banner ? `url("${banner.replace(/"/g, '%22')}")` : '';
-  if (banner) {
-    const label = document.createElement('span');
-    label.textContent = server.name;
-    serverBanner.append(label);
-  }
 
   serverSettings.classList.toggle('hidden', !inServer || (!hasPermission('manageRoles') && !hasPermission('manageServer')));
   newChannel.classList.toggle('hidden', !inServer || !hasPermission('manageChannels'));
@@ -959,6 +964,7 @@ function updateComposerState() {
 
 function setView(type, id) {
   clearLocalTyping();
+  closeMentionMenu();
   view = type === 'dm' || type === 'channel' ? { type, id } : { type };
   if (type === 'dms') unread.clear();
   if (type === 'dm') {
@@ -1024,6 +1030,79 @@ function emitTyping(isTyping) {
   });
 }
 
+function closeMentionMenu() {
+  mentionMenu.classList.add('hidden');
+  mentionMenu.replaceChildren();
+  mentionMatches = [];
+  mentionStart = -1;
+  mentionIndex = 0;
+}
+
+function pickMention(index) {
+  const member = mentionMatches[index];
+  if (!member || mentionStart < 0) return;
+  const caret = messageInput.selectionStart == null ? messageInput.value.length : messageInput.selectionStart;
+  const before = messageInput.value.slice(0, mentionStart);
+  const after = messageInput.value.slice(caret);
+  const inserted = `@${member.username} `;
+  messageInput.value = before + inserted + after;
+  const position = before.length + inserted.length;
+  closeMentionMenu();
+  messageInput.focus();
+  messageInput.setSelectionRange(position, position);
+  handleInput();
+}
+
+function renderMentionMenu() {
+  mentionMenu.replaceChildren();
+  mentionMatches.forEach((member, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `mention-item${index === mentionIndex ? ' active' : ''}`;
+    button.append(makeAvatar(member, 'small'));
+    const text = document.createElement('span');
+    text.className = 'mention-text';
+    const name = document.createElement('strong');
+    name.textContent = `@${member.username}`;
+    const detail = document.createElement('small');
+    detail.textContent = member.displayName || member.username;
+    text.append(name, detail);
+    button.append(text);
+    button.addEventListener('mousedown', (event) => event.preventDefault());
+    button.addEventListener('click', () => pickMention(index));
+    mentionMenu.append(button);
+  });
+  mentionMenu.classList.remove('hidden');
+}
+
+function updateMentionMenu() {
+  if (!canChatNow() || view.type !== 'channel') {
+    closeMentionMenu();
+    return;
+  }
+  const caret = messageInput.selectionStart == null ? messageInput.value.length : messageInput.selectionStart;
+  const before = messageInput.value.slice(0, caret);
+  const match = before.match(/(^|[\s(])@([^\s@]{0,24})$/);
+  if (!match) {
+    closeMentionMenu();
+    return;
+  }
+  const query = match[2].toLowerCase();
+  mentionStart = caret - match[2].length - 1;
+  mentionMatches = members
+    .filter((member) => member.username !== me?.username)
+    .filter((member) => !query ||
+      member.username.toLowerCase().includes(query) ||
+      String(member.displayName || '').toLowerCase().includes(query))
+    .slice(0, 8);
+  if (!mentionMatches.length) {
+    closeMentionMenu();
+    return;
+  }
+  mentionIndex = Math.min(mentionIndex, mentionMatches.length - 1);
+  renderMentionMenu();
+}
+
 function handleInput() {
   if (!canChatNow()) return;
   const key = typingKey(view.type, view.id);
@@ -1036,6 +1115,7 @@ function handleInput() {
     localTypingTimer = null;
     emitTyping(false);
   }, 2000);
+  updateMentionMenu();
 }
 
 function clearLocalTyping() {
@@ -1613,11 +1693,32 @@ chatForm.addEventListener('submit', (event) => {
   }
 
   messageInput.value = '';
+  closeMentionMenu();
   clearLocalTyping();
   messageInput.focus();
 });
 
 messageInput.addEventListener('input', handleInput);
+messageInput.addEventListener('keyup', updateMentionMenu);
+messageInput.addEventListener('click', updateMentionMenu);
+messageInput.addEventListener('keydown', (event) => {
+  if (mentionMenu.classList.contains('hidden')) return;
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    mentionIndex = (mentionIndex + 1) % mentionMatches.length;
+    renderMentionMenu();
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    mentionIndex = (mentionIndex - 1 + mentionMatches.length) % mentionMatches.length;
+    renderMentionMenu();
+  } else if (event.key === 'Enter' || event.key === 'Tab') {
+    event.preventDefault();
+    pickMention(mentionIndex);
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    closeMentionMenu();
+  }
+});
 messageInput.addEventListener('blur', clearLocalTyping);
 byId('emoji-button').addEventListener('click', (event) => {
   event.stopPropagation();
@@ -1631,6 +1732,9 @@ document.addEventListener('click', (event) => {
   }
   if (!reactionPicker.contains(event.target) && !event.target.classList.contains('react-button')) {
     reactionPicker.classList.add('hidden');
+  }
+  if (!mentionMenu.contains(event.target) && event.target !== messageInput) {
+    closeMentionMenu();
   }
 });
 
