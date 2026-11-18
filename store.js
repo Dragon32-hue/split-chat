@@ -69,8 +69,10 @@ async function init() {
       name TEXT NOT NULL,
       owner TEXT NOT NULL,
       icon TEXT NOT NULL,
+      banner TEXT NOT NULL DEFAULT '',
       created_at BIGINT NOT NULL
     )`);
+    await pool.query(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS banner TEXT NOT NULL DEFAULT ''`);
     await pool.query(`CREATE TABLE IF NOT EXISTS server_members (
       server_id TEXT NOT NULL,
       username TEXT NOT NULL,
@@ -131,7 +133,14 @@ function normalizePermissions(value) {
 }
 
 function mapServer(row) {
-  return { id: row.id, name: row.name, owner: row.owner, icon: row.icon, createdAt: Number(row.created_at) };
+  return {
+    id: row.id,
+    name: row.name,
+    owner: row.owner,
+    icon: row.icon,
+    banner: row.banner || '',
+    createdAt: Number(row.created_at)
+  };
 }
 
 function mapChannel(row) {
@@ -284,7 +293,7 @@ async function createServer(username, name, icon, allPermissions, memberPermissi
   const key = username.toLowerCase();
   const serverId = crypto.randomUUID();
   const channelId = crypto.randomUUID();
-  const server = { id: serverId, name, icon, owner: key, createdAt: Date.now() };
+  const server = { id: serverId, name, icon, banner: '', owner: key, createdAt: Date.now() };
   const ownerRole = { id: 'owner', serverId, name: 'Owner', color: '#fee75c', permissions: allPermissions };
   const memberRole = { id: 'member', serverId, name: 'Member', color: '#5865f2', permissions: memberPermissions };
   const channel = { id: channelId, serverId, name: 'general', topic: 'Welcome to your server.' };
@@ -470,6 +479,17 @@ async function removeFriend(username, other) {
   return true;
 }
 
+async function setServerBanner(serverId, banner) {
+  if (pool) {
+    await pool.query('UPDATE servers SET banner = $1 WHERE id = $2', [banner, serverId]);
+    return;
+  }
+  const server = fileData.servers[serverId];
+  if (!server) return;
+  server.banner = banner;
+  saveFile();
+}
+
 module.exports = {
   init,
   getAccount,
@@ -482,6 +502,7 @@ module.exports = {
   getServersFor,
   createServer,
   joinServer,
+  setServerBanner,
   getChannel,
   createChannel,
   getRole,

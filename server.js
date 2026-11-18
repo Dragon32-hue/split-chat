@@ -315,6 +315,27 @@ app.post('/api/servers/create', async (req, res) => {
   }
 });
 
+app.post('/api/servers/banner', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const serverId = clean(body.serverId, 40);
+    const access = await accessTo(profile.username, serverId, 'manageServer');
+    if (!access.server) return res.status(404).json({ error: 'Server not found.' });
+    if (!access.allowed) return res.status(403).json({ error: 'You cannot manage this server.' });
+
+    const banner = body.banner === null ? '' : cleanAvatarImage(body.banner);
+    await store.setServerBanner(serverId, banner);
+    await broadcastServers();
+    res.json({ ok: true, banner });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: `Could not update the banner: ${error.message}` });
+  }
+});
+
 app.post('/api/servers/join', async (req, res) => {
   try {
     const body = req.body || {};

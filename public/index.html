@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Split Chat</title>
-  <link rel="stylesheet" href="/style.css?v=11" />
+  <link rel="stylesheet" href="/style.css?v=12" />
 </head>
 <body>
   <svg xmlns="http://www.w3.org/2000/svg" class="icon-sprite" aria-hidden="true">
@@ -215,6 +215,7 @@
     </aside>
 
     <main class="main">
+      <div id="server-banner" class="server-banner hidden"></div>
       <header class="chat-header">
         <div>
           <h2 id="view-title">Home</h2>
@@ -395,6 +396,17 @@
         <p id="server-id-line" class="muted small-text"></p>
         <button id="copy-server-id" type="button" class="secondary small-button">Copy invite ID</button>
       </div>
+      <section id="banner-section" class="settings-section">
+        <h3>Server banner</h3>
+        <p class="muted small-text">Upload a wide image shown at the top of this server.</p>
+        <input id="server-banner-input" type="file" accept="image/*" />
+        <img id="server-banner-preview" class="server-banner-preview hidden" alt="Server banner preview" />
+        <div class="banner-actions">
+          <button id="save-banner" type="button" class="primary small-button">Save Banner</button>
+          <button id="remove-banner" type="button" class="secondary small-button">Remove Banner</button>
+        </div>
+        <p id="banner-error" class="error"></p>
+      </section>
       <section class="settings-section">
         <h3>Roles</h3>
         <div id="role-list" class="role-list"></div>
@@ -415,6 +427,6 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/client.js?v=11"></script>
+  <script src="/client.js?v=12"></script>
 </body>
 </html>

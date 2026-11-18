@@ -71,6 +71,47 @@ function serverIconElement(parts, extraClass) {
   return text;
 }
 
+let audioContext = null;
+
+function unlockAudio() {
+  try {
+    if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioContext.state === 'suspended') audioContext.resume();
+  } catch (error) {
+    audioContext = null;
+  }
+}
+
+document.addEventListener('pointerdown', unlockAudio, { once: true });
+document.addEventListener('keydown', unlockAudio, { once: true });
+
+function playNotificationSound() {
+  try {
+    unlockAudio();
+    if (!audioContext) return;
+    const now = audioContext.currentTime;
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(880, now);
+    oscillator.frequency.exponentialRampToValueAtTime(1320, now + 0.12);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.12, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+    oscillator.connect(gain).connect(audioContext.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.26);
+  } catch (error) {
+    audioContext = null;
+  }
+}
+
+function mentionsMe(text) {
+  if (!me || !text) return false;
+  const name = me.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^a-z0-9_-])@${name}([^a-z0-9_-]|$)`, 'i').test(text);
+}
+
 const authScreen = byId('auth-screen');
 const app = byId('app');
 const loginForm = byId('login-form');
@@ -102,6 +143,7 @@ const userSettingsModal = byId('user-settings-modal');
 const dmModal = byId('dm-modal');
 const serverRail = byId('server-rail');
 const serverTitle = byId('server-title');
+const serverBanner = byId('server-banner');
 const serverIcon = byId('brand-icon');
 const serverSettings = byId('server-settings');
 const channelHeading = byId('channel-heading');
@@ -118,6 +160,7 @@ let friends = [];
 let activeServerId = null;
 let serverMode = 'create';
 let pendingServerIcon = '';
+let pendingBanner = '';
 let messagesByChannel = {};
 let conversations = {};
 let members = [];
@@ -344,6 +387,17 @@ function renderChannels() {
     serverIcon.append(svgIcon(view.type === 'friends' ? 'users' : view.type === 'home' ? 'home' : 'messages', 'logo-icon'));
     channelHeading.textContent = 'Text Channels';
   }
+
+  const banner = inServer && server.banner ? server.banner : '';
+  serverBanner.classList.toggle('hidden', !banner);
+  serverBanner.replaceChildren();
+  serverBanner.style.backgroundImage = banner ? `url("${banner.replace(/"/g, '%22')}")` : '';
+  if (banner) {
+    const label = document.createElement('span');
+    label.textContent = server.name;
+    serverBanner.append(label);
+  }
+
   serverSettings.classList.toggle('hidden', !inServer || (!hasPermission('manageRoles') && !hasPermission('manageServer')));
   newChannel.classList.toggle('hidden', !inServer || !hasPermission('manageChannels'));
 
@@ -796,6 +850,7 @@ function appendMessage(message, scroll) {
   const item = document.createElement('li');
   item.className = 'message';
   if (me && message.from === me.username) item.classList.add('mine');
+  if (mentionsMe(message.text)) item.classList.add('mentioned');
 
   const avatar = makeAvatar(message.author || {}, '');
   const body = document.createElement('div');
@@ -1073,6 +1128,9 @@ function openServerSettings() {
   byId('server-id-line').textContent = `Invite ID: ${server.id}`;
   byId('role-error').textContent = '';
   byId('settings-error').textContent = '';
+  byId('banner-error').textContent = '';
+  byId('server-banner-input').value = '';
+  pendingBanner = server.banner || '';
   renderSettings();
   settingsModal.classList.remove('hidden');
 }
@@ -1080,6 +1138,15 @@ function openServerSettings() {
 function renderSettings() {
   const server = activeServer();
   if (!server) return;
+
+  byId('banner-section').classList.toggle('hidden', !hasPermission('manageServer'));
+  const bannerPreview = byId('server-banner-preview');
+  if (pendingBanner) {
+    bannerPreview.src = pendingBanner;
+    bannerPreview.classList.remove('hidden');
+  } else {
+    bannerPreview.classList.add('hidden');
+  }
 
   const roleList = byId('role-list');
   roleList.replaceChildren();
@@ -1238,6 +1305,38 @@ async function fileToAvatarData(file) {
   return canvas.toDataURL('image/jpeg', 0.75);
 }
 
+async function fileToBannerData(file) {
+  if (file.size > 5 * 1024 * 1024) throw new Error('Image must be smaller than 5 MB.');
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const image = await new Promise((resolve, reject) => {
+    const element = new Image();
+    element.onload = () => resolve(element);
+    element.onerror = reject;
+    element.src = dataUrl;
+  });
+  const canvas = document.createElement('canvas');
+  const width = 960;
+  const height = 240;
+  canvas.width = width;
+  canvas.height = height;
+  const scale = Math.max(width / image.width, height / image.height);
+  const drawWidth = image.width * scale;
+  const drawHeight = image.height * scale;
+  canvas.getContext('2d').drawImage(
+    image,
+    (width - drawWidth) / 2,
+    (height - drawHeight) / 2,
+    drawWidth,
+    drawHeight
+  );
+  return canvas.toDataURL('image/jpeg', 0.7);
+}
+
 async function handleImagePick(input, preview, setter, errorEl) {
   const file = input.files && input.files[0];
   if (!file) return;
@@ -1318,6 +1417,51 @@ byId('server-image').addEventListener('change', () => {
     (data) => { pendingServerIcon = data; },
     byId('server-error')
   );
+});
+
+byId('server-banner-input').addEventListener('change', async (event) => {
+  const input = event.currentTarget;
+  const file = input.files && input.files[0];
+  if (!file) return;
+  try {
+    pendingBanner = await fileToBannerData(file);
+    const preview = byId('server-banner-preview');
+    preview.src = pendingBanner;
+    preview.classList.remove('hidden');
+    byId('banner-error').textContent = '';
+  } catch (error) {
+    input.value = '';
+    byId('banner-error').textContent = error.message || 'Could not load that image.';
+  }
+});
+
+byId('save-banner').addEventListener('click', async () => {
+  const server = activeServer();
+  if (!server) return;
+  const errorEl = byId('banner-error');
+  errorEl.textContent = '';
+  try {
+    await api('/api/servers/banner', { token, serverId: server.id, banner: pendingBanner });
+    settingsModal.classList.add('hidden');
+  } catch (error) {
+    errorEl.textContent = error.message || 'Could not save the banner.';
+  }
+});
+
+byId('remove-banner').addEventListener('click', async () => {
+  const server = activeServer();
+  if (!server) return;
+  const errorEl = byId('banner-error');
+  errorEl.textContent = '';
+  pendingBanner = '';
+  byId('server-banner-input').value = '';
+  byId('server-banner-preview').classList.add('hidden');
+  try {
+    await api('/api/servers/banner', { token, serverId: server.id, banner: '' });
+    settingsModal.classList.add('hidden');
+  } catch (error) {
+    errorEl.textContent = error.message || 'Could not remove the banner.';
+  }
 });
 
 byId('server-form').addEventListener('submit', async (event) => {
@@ -1686,6 +1830,7 @@ socket.on('message:new', (payload) => {
   if (!messagesByChannel[payload.channel]) messagesByChannel[payload.channel] = [];
   messagesByChannel[payload.channel].push(payload.message);
   if (view.type === 'channel' && view.id === payload.channel) appendMessage(payload.message);
+  if (payload.message.from !== me?.username && mentionsMe(payload.message.text)) playNotificationSound();
 });
 
 socket.on('dm:new', (message) => {
@@ -1701,6 +1846,9 @@ socket.on('dm:new', (message) => {
   }
   renderDMs();
   if (view.type === 'home' || view.type === 'dms' || view.type === 'friends') renderView();
+  if (message.from !== me.username && (document.hidden || view.type !== 'dm' || view.id !== other)) {
+    playNotificationSound();
+  }
 });
 
 socket.on('reaction:update', (payload) => {
