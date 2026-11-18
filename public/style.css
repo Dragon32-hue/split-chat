@@ -797,6 +797,63 @@ label {
   font-size: 1.4rem;
 }
 
+.hub-heading {
+  margin-top: 22px !important;
+  margin-bottom: 10px !important;
+  color: #f2f3f5 !important;
+  font-weight: 700;
+}
+
+.friend-add-form {
+  display: flex;
+  gap: 8px;
+  max-width: 520px;
+}
+
+.friend-add-form input {
+  flex: 1;
+}
+
+.friend-add-form button {
+  flex: none;
+}
+
+.friend-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 640px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px solid #3f4147;
+  border-radius: 10px;
+  background: #2b2d31;
+}
+
+.friend-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.friend-text strong,
+.friend-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friend-text small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.friend-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .hub p {
   margin: 0 0 22px;
   color: var(--muted);
@@ -1172,6 +1229,7 @@ body[data-theme="light"] .hub-card,
 body[data-theme="light"] .composer,
 body[data-theme="light"] .profile-status,
 body[data-theme="light"] .reaction-chip,
+body[data-theme="light"] .friend-row,
 body[data-theme="light"] .auth-tabs,
 body[data-theme="light"] .auth-tab {
   background: #e6e8eb;

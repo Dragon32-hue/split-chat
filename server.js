@@ -150,6 +150,13 @@ async function broadcastServers() {
   }
 }
 
+async function broadcastFriends() {
+  for (const [socketId, profile] of profiles) {
+    const target = io.sockets.sockets.get(socketId);
+    if (target) target.emit('friends:update', await store.getFriends(profile.username));
+  }
+}
+
 async function sessionProfile(token) {
   if (!token) return null;
   const session = await store.getSession(token);
@@ -273,7 +280,7 @@ app.post('/api/servers/create', async (req, res) => {
     res.json({ server });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Could not create the server.' });
+    res.status(500).json({ error: `Could not create the server: ${error.message}` });
   }
 });
 
@@ -379,6 +386,59 @@ app.post('/api/servers/assign', async (req, res) => {
   }
 });
 
+app.post('/api/friends/request', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const username = clean(body.username, 20);
+    if (username.toLowerCase() === profile.username.toLowerCase()) {
+      return res.status(400).json({ error: 'You cannot friend yourself.' });
+    }
+    const sent = await store.sendFriendRequest(profile.username, username);
+    if (!sent) return res.status(400).json({ error: 'No user with that name, or a request already exists.' });
+
+    await broadcastFriends();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Could not send the friend request.' });
+  }
+});
+
+app.post('/api/friends/accept', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    const accepted = await store.acceptFriendRequest(profile.username, clean(body.username, 20));
+    if (!accepted) return res.status(404).json({ error: 'That friend request was not found.' });
+
+    await broadcastFriends();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Could not accept that request.' });
+  }
+});
+
+app.post('/api/friends/remove', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const profile = await sessionProfile(String(body.token || ''));
+    if (!profile) return res.status(401).json({ error: 'Please log in again.' });
+
+    await store.removeFriend(profile.username, clean(body.username, 20));
+    await broadcastFriends();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Could not remove that friend.' });
+  }
+});
+
 io.on('connection', (socket) => {
   socket.on('join', async (data, reply) => {
     try {
@@ -391,16 +451,23 @@ io.on('connection', (socket) => {
 
       const existing = byUsername.get(profile.username.toLowerCase());
       if (existing && existing !== socket.id) {
-        if (reply) reply({ ok: false, error: 'This account is already connected in another tab.' });
-        return;
+        const previous = io.sockets.sockets.get(existing);
+        if (previous) {
+          previous.emit('session:replaced');
+          previous.disconnect(true);
+        }
+        profiles.delete(existing);
+        byUsername.delete(profile.username.toLowerCase());
       }
 
       profiles.set(socket.id, profile);
       byUsername.set(profile.username.toLowerCase(), socket.id);
 
       const servers = await store.getServersFor(profile.username);
+      const friends = await store.getFriends(profile.username);
       socket.emit('init', {
         servers,
+        friends,
         messages: Object.fromEntries(channelMessages),
         conversations: getConversations(profile.username),
         members: getMembers()

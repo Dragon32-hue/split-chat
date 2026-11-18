@@ -64,6 +64,7 @@ const registerError = byId('register-error');
 const connectionStatus = byId('connection-status');
 const navHome = byId('nav-home');
 const navDms = byId('nav-dms');
+const navFriends = byId('nav-friends');
 const channelList = byId('channel-list');
 const dmList = byId('dm-list');
 const membersEl = byId('members');
@@ -95,6 +96,7 @@ let token = localStorage.getItem(TOKEN_KEY) || '';
 let me = null;
 let connected = false;
 let servers = [];
+let friends = [];
 let activeServerId = null;
 let serverMode = 'create';
 let messagesByChannel = {};
@@ -269,6 +271,7 @@ function renderServerRail() {
   serverRail.replaceChildren();
   serverRail.append(makeServerButton('home', 'Home', view.type === 'home' ? 'active' : '', () => setView('home'), true));
   serverRail.append(makeServerButton('messages', 'Direct Messages', view.type === 'dms' ? 'active' : '', () => setView('dms'), true));
+  serverRail.append(makeServerButton('users', 'Friends', view.type === 'friends' ? 'active' : '', () => setView('friends'), true));
 
   const divider = document.createElement('div');
   divider.className = 'server-divider';
@@ -341,6 +344,7 @@ function renderChannels() {
 
   navHome.classList.toggle('active', view.type === 'home');
   navDms.classList.toggle('active', view.type === 'dms');
+  navFriends.classList.toggle('active', view.type === 'friends');
 }
 
 function renderDMs() {
@@ -438,6 +442,149 @@ function makeHubCard(title, subtitle, leading, onClick) {
   return button;
 }
 
+function profileForUsername(username) {
+  return members.find((member) => member.username.toLowerCase() === username.toLowerCase()) || {
+    username,
+    displayName: username,
+    avatar: '👤',
+    color: '#5865f2',
+    status: 'offline'
+  };
+}
+
+function makeFriendRow(entry, buttons) {
+  const profile = profileForUsername(entry.username);
+  const row = document.createElement('div');
+  row.className = 'friend-row';
+  row.append(makeAvatar(profile, 'small'));
+
+  const text = document.createElement('span');
+  text.className = 'friend-text';
+  const name = document.createElement('strong');
+  name.textContent = profile.displayName;
+  const detail = document.createElement('small');
+  detail.textContent = `@${entry.username} · ${STATUS_LABELS[profile.status] || 'Offline'}`;
+  text.append(name, detail);
+  row.append(text);
+
+  if (buttons && buttons.length) {
+    const actions = document.createElement('span');
+    actions.className = 'friend-actions';
+    buttons.forEach((button) => actions.append(button));
+    row.append(actions);
+  }
+  return row;
+}
+
+function friendAction(label, className, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className;
+  button.textContent = label;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+async function friendRequest(path, username, errorEl) {
+  errorEl.textContent = '';
+  try {
+    await api(path, { token, username });
+    return true;
+  } catch (error) {
+    errorEl.textContent = error.message;
+    return false;
+  }
+}
+
+function renderFriendsHub() {
+  const hub = document.createElement('div');
+  hub.className = 'hub';
+
+  const title = document.createElement('h2');
+  title.textContent = 'Friends';
+  const subtitle = document.createElement('p');
+  subtitle.textContent = 'Add people by username, then chat or invite them to your servers.';
+  hub.append(title, subtitle);
+
+  const form = document.createElement('form');
+  form.className = 'friend-add-form';
+  const input = document.createElement('input');
+  input.id = 'add-friend-input';
+  input.maxLength = 20;
+  input.placeholder = 'Enter a username';
+  input.required = true;
+  const addButton = document.createElement('button');
+  addButton.type = 'submit';
+  addButton.className = 'primary';
+  addButton.textContent = 'Add Friend';
+  form.append(input, addButton);
+  const error = document.createElement('p');
+  error.className = 'error';
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const username = input.value.trim();
+    if (!username) return;
+    const ok = await friendRequest('/api/friends/request', username, error);
+    if (ok) {
+      input.value = '';
+      error.style.color = '#57f287';
+      error.textContent = 'Friend request sent.';
+      setTimeout(() => { error.textContent = ''; }, 1800);
+    } else {
+      error.style.color = '';
+    }
+  });
+  hub.append(form, error);
+
+  const incoming = friends.filter((item) => item.direction === 'incoming');
+  if (incoming.length) {
+    const heading = document.createElement('p');
+    heading.className = 'hub-heading';
+    heading.textContent = 'Friend Requests';
+    hub.append(heading);
+    incoming.forEach((entry) => {
+      hub.append(makeFriendRow(entry, [
+        friendAction('Accept', 'primary small-button', () => friendRequest('/api/friends/accept', entry.username, error)),
+        friendAction('Decline', 'secondary small-button', () => friendRequest('/api/friends/remove', entry.username, error))
+      ]));
+    });
+  }
+
+  const outgoing = friends.filter((item) => item.direction === 'outgoing');
+  if (outgoing.length) {
+    const heading = document.createElement('p');
+    heading.className = 'hub-heading';
+    heading.textContent = 'Sent Requests';
+    hub.append(heading);
+    outgoing.forEach((entry) => {
+      hub.append(makeFriendRow(entry, [
+        friendAction('Cancel', 'secondary small-button', () => friendRequest('/api/friends/remove', entry.username, error))
+      ]));
+    });
+  }
+
+  const heading = document.createElement('p');
+  heading.className = 'hub-heading';
+  heading.textContent = 'Your Friends';
+  hub.append(heading);
+
+  const accepted = friends.filter((item) => item.direction === 'accepted');
+  if (!accepted.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'No friends yet. Add someone above to get started.';
+    hub.append(empty);
+  }
+  accepted.forEach((entry) => {
+    hub.append(makeFriendRow(entry, [
+      friendAction('Message', 'secondary small-button', () => setView('dm', entry.username)),
+      friendAction('Remove', 'secondary small-button', () => friendRequest('/api/friends/remove', entry.username, error))
+    ]));
+  });
+
+  messagesEl.replaceChildren(hub);
+  messagesEl.scrollTop = 0;
+}
+
 function renderHub() {
   const hub = document.createElement('div');
   hub.className = 'hub';
@@ -507,13 +654,18 @@ function renderHub() {
 
   const friendsGrid = document.createElement('div');
   friendsGrid.className = 'hub-grid';
-  const friends = members.filter((member) => member.username !== me.username);
-  if (!friends.length) {
+  const friendNames = new Set(friends
+    .filter((item) => item.direction === 'accepted')
+    .map((item) => item.username.toLowerCase()));
+  const onlineFriends = members.filter((member) =>
+    member.username.toLowerCase() !== me.username.toLowerCase() &&
+    friendNames.has(member.username.toLowerCase()));
+  if (!onlineFriends.length) {
     const empty = document.createElement('p');
-    empty.textContent = 'No one else is online right now. Share your link and invite them!';
+    empty.textContent = 'No friends online yet. Open Friends to add someone.';
     friendsGrid.append(empty);
   }
-  friends.forEach((profile) => {
+  onlineFriends.forEach((profile) => {
     friendsGrid.append(makeHubCard(
       profile.displayName,
       `@${profile.username} · ${STATUS_LABELS[profile.status] || ''}`,
@@ -585,6 +737,11 @@ function appendMessage(message, scroll) {
 }
 
 function renderView() {
+  if (view.type === 'friends') {
+    renderFriendsHub();
+    typingLine.textContent = '';
+    return;
+  }
   if (view.type === 'home' || view.type === 'dms') {
     renderHub();
     typingLine.textContent = '';
@@ -611,6 +768,9 @@ function updateHeader() {
     title.textContent = `@${view.id}`;
     topic.textContent = `Direct message with ${displayNameOf(view.id)}`;
     messageInput.placeholder = `Message @${view.id}`;
+  } else if (view.type === 'friends') {
+    title.textContent = 'Friends';
+    topic.textContent = 'Add friends and manage requests';
   } else {
     title.textContent = view.type === 'home' ? 'Home' : 'Direct Messages';
     topic.textContent = view.type === 'home' ? 'Your Split Chat dashboard' : 'Friends and conversations';
@@ -619,7 +779,7 @@ function updateHeader() {
 
 function updateComposerState() {
   const canChat = canChatNow();
-  chatForm.classList.toggle('hidden', view.type === 'home' || view.type === 'dms');
+  chatForm.classList.toggle('hidden', view.type === 'home' || view.type === 'dms' || view.type === 'friends');
   messageInput.disabled = !canChat;
   sendButton.disabled = !canChat;
 }
@@ -649,7 +809,7 @@ function canChatNow() {
 }
 
 function renderTyping() {
-  if (view.type === 'home' || view.type === 'dms') {
+  if (view.type === 'home' || view.type === 'dms' || view.type === 'friends') {
     typingLine.textContent = '';
     return;
   }
@@ -1114,6 +1274,7 @@ byId('edit-remove-image').addEventListener('click', () => {
 
 navHome.addEventListener('click', () => setView('home'));
 navDms.addEventListener('click', () => setView('dms'));
+navFriends.addEventListener('click', () => setView('friends'));
 serverSettings.addEventListener('click', openServerSettings);
 newChannel.addEventListener('click', openChannelModal);
 
@@ -1271,6 +1432,7 @@ async function logout() {
   me = null;
   connected = false;
   servers = [];
+  friends = [];
   activeServerId = null;
   view = { type: 'home' };
   localStorage.removeItem(TOKEN_KEY);
@@ -1313,8 +1475,17 @@ socket.on('auth:expired', () => {
   showAuth('Your session expired. Please log in again.');
 });
 
+socket.on('session:replaced', () => {
+  token = '';
+  me = null;
+  localStorage.removeItem(TOKEN_KEY);
+  socket.disconnect();
+  showAuth('This account was opened in another tab. Log in again to continue here.');
+});
+
 socket.on('init', (data) => {
   servers = data.servers || [];
+  friends = data.friends || [];
   messagesByChannel = data.messages || {};
   conversations = data.conversations || {};
   members = data.members || [];
@@ -1339,6 +1510,11 @@ socket.on('servers:update', (list) => {
   if (!settingsModal.classList.contains('hidden')) renderSettings();
 });
 
+socket.on('friends:update', (list) => {
+  friends = list || [];
+  if (me) renderAll();
+});
+
 socket.on('message:error', (message) => {
   typingLine.textContent = message;
   setTimeout(renderTyping, 3000);
@@ -1348,7 +1524,7 @@ socket.on('members', (list) => {
   members = list;
   renderMembers();
   renderDMs();
-  if (me && (view.type === 'home' || view.type === 'dms')) renderHub();
+  if (me && (view.type === 'home' || view.type === 'dms' || view.type === 'friends')) renderView();
   renderTyping();
 });
 
@@ -1370,7 +1546,7 @@ socket.on('dm:new', (message) => {
     unread.set(other, (unread.get(other) || 0) + 1);
   }
   renderDMs();
-  if (view.type === 'home' || view.type === 'dms') renderHub();
+  if (view.type === 'home' || view.type === 'dms' || view.type === 'friends') renderView();
 });
 
 socket.on('reaction:update', (payload) => {
