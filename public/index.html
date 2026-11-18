@@ -7,45 +7,68 @@
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div id="join-screen" class="join-screen">
-    <form id="join-form" class="join-card">
+  <div id="auth-screen" class="join-screen">
+    <div class="join-card">
       <div class="join-logo">💬</div>
       <h1>Split Chat</h1>
-      <p class="subtitle">Pick a profile and jump into the conversation.</p>
+      <p class="subtitle">Your place to hang out with friends.</p>
 
-      <label for="join-username">Username</label>
-      <input id="join-username" maxlength="20" placeholder="e.g. alex" autocomplete="nickname" required />
-
-      <label for="join-display">Display name <span class="hint">(optional)</span></label>
-      <input id="join-display" maxlength="24" placeholder="How others see you" />
-
-      <div class="field-row">
-        <div>
-          <label for="join-avatar">Avatar</label>
-          <select id="join-avatar"></select>
-        </div>
-        <div>
-          <label for="join-status">Status</label>
-          <select id="join-status">
-            <option value="online">🟢 Online</option>
-            <option value="idle">🟡 Idle</option>
-            <option value="dnd">🔴 Do not disturb</option>
-          </select>
-        </div>
+      <div class="auth-tabs">
+        <button id="tab-login" type="button" class="auth-tab active">Log In</button>
+        <button id="tab-register" type="button" class="auth-tab">Register</button>
       </div>
 
-      <label for="join-bio">About me <span class="hint">(optional)</span></label>
-      <textarea id="join-bio" maxlength="160" rows="2" placeholder="A little about you"></textarea>
+      <form id="login-form">
+        <label for="login-username">Username</label>
+        <input id="login-username" maxlength="20" placeholder="your username" autocomplete="username" required />
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" placeholder="your password" autocomplete="current-password" required />
+        <p id="login-error" class="error" role="alert"></p>
+        <button type="submit" class="primary full">Log In</button>
+      </form>
 
-      <p id="join-error" class="error" role="alert"></p>
-      <button type="submit" class="primary full">Join Split Chat</button>
-    </form>
+      <form id="register-form" class="hidden">
+        <label for="reg-username">Username</label>
+        <input id="reg-username" maxlength="20" placeholder="3-20 letters, numbers, _ or -" autocomplete="username" required />
+        <label for="reg-password">Password</label>
+        <input id="reg-password" type="password" minlength="8" placeholder="at least 8 characters" autocomplete="new-password" required />
+        <label for="reg-display">Display name <span class="hint">(optional)</span></label>
+        <input id="reg-display" maxlength="24" placeholder="How others see you" />
+        <div class="field-row">
+          <div>
+            <label for="reg-avatar">Avatar</label>
+            <select id="reg-avatar"></select>
+          </div>
+          <div>
+            <label for="reg-status">Status</label>
+            <select id="reg-status">
+              <option value="online">🟢 Online</option>
+              <option value="idle">🟡 Idle</option>
+              <option value="dnd">🔴 Do not disturb</option>
+            </select>
+          </div>
+        </div>
+        <label for="reg-bio">About me <span class="hint">(optional)</span></label>
+        <textarea id="reg-bio" maxlength="160" rows="2" placeholder="A little about you"></textarea>
+        <label for="reg-image">Profile picture <span class="hint">(optional)</span></label>
+        <div class="image-field">
+          <img id="reg-image-preview" class="image-preview hidden" alt="Profile picture preview" />
+          <input id="reg-image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+        </div>
+        <p id="register-error" class="error" role="alert"></p>
+        <button type="submit" class="primary full">Create Account</button>
+      </form>
+    </div>
   </div>
 
   <div id="app" class="app hidden">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">💬</span><span>Split Chat</span></div>
       <div class="sidebar-scroll">
+        <nav class="quick-nav">
+          <button id="nav-home" type="button" class="side-item"><span class="channel-hash">🏠</span><span class="side-name">Home</span></button>
+          <button id="nav-dms" type="button" class="side-item"><span class="channel-hash">✉️</span><span class="side-name">Direct Messages</span></button>
+        </nav>
         <section class="side-section">
           <h2>Text Channels</h2>
           <ul id="channel-list" class="side-list"></ul>
@@ -64,13 +87,14 @@
           <span class="user-bar-text"><strong id="my-display"></strong><small id="my-username"></small></span>
         </button>
         <button id="edit-profile" type="button" class="icon-button" title="Edit profile">⚙</button>
+        <button id="logout" type="button" class="icon-button" title="Log out">🚪</button>
       </div>
     </aside>
 
     <main class="main">
       <header class="chat-header">
         <div>
-          <h2 id="view-title">#general</h2>
+          <h2 id="view-title">Home</h2>
           <p id="view-topic" class="view-topic"></p>
         </div>
         <div id="connection-status" class="connection-status">Connecting...</div>
@@ -78,7 +102,11 @@
       <ul id="messages" class="messages" aria-live="polite"></ul>
       <div id="typing-line" class="typing-line"></div>
       <form id="chat-form" class="composer">
-        <input id="message-input" maxlength="500" placeholder="Message #general" autocomplete="off" disabled />
+        <div class="composer-input-wrap">
+          <button type="button" id="emoji-button" class="composer-icon" title="Emoji">😀</button>
+          <input id="message-input" maxlength="500" placeholder="Message #general" autocomplete="off" disabled />
+          <div id="emoji-picker" class="emoji-picker hidden"><div id="emoji-grid" class="emoji-grid"></div></div>
+        </div>
         <button id="send-button" type="submit" disabled>Send</button>
       </form>
     </main>
@@ -88,6 +116,8 @@
       <ul id="members" class="members"></ul>
     </aside>
   </div>
+
+  <div id="reaction-picker" class="emoji-picker reaction-picker hidden"><div id="reaction-grid" class="emoji-grid"></div></div>
 
   <div id="profile-modal" class="modal hidden">
     <div class="modal-backdrop" data-close="profile-modal"></div>
@@ -132,6 +162,12 @@
       </select>
       <label for="edit-bio">About me</label>
       <textarea id="edit-bio" maxlength="160" rows="3"></textarea>
+      <label for="edit-image">Profile picture</label>
+      <div class="image-field">
+        <img id="edit-image-preview" class="image-preview hidden" alt="Profile picture preview" />
+        <input id="edit-image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+        <button id="edit-remove-image" type="button" class="secondary small-button hidden">Remove photo</button>
+      </div>
       <p id="edit-error" class="error"></p>
       <button type="submit" class="primary full">Save Changes</button>
     </form>
