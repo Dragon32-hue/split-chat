@@ -92,11 +92,11 @@ async function init() {
       topic TEXT NOT NULL
     )`);
     await pool.query(`CREATE TABLE IF NOT EXISTS friends (
-      user TEXT NOT NULL,
+      owner TEXT NOT NULL,
       friend TEXT NOT NULL,
       status TEXT NOT NULL,
       created_at BIGINT NOT NULL,
-      PRIMARY KEY (user, friend)
+      PRIMARY KEY (owner, friend)
     )`);
     return;
   }
@@ -386,18 +386,18 @@ async function getFriends(username) {
   let rows;
   if (pool) {
     const result = await pool.query(
-      'SELECT user, friend, status FROM friends WHERE user = $1 OR friend = $1',
+      'SELECT owner, friend, status FROM friends WHERE owner = $1 OR friend = $1',
       [key]
     );
     rows = result.rows;
   } else {
-    rows = fileData.friends.filter((item) => item.user === key || item.friend === key);
+    rows = fileData.friends.filter((item) => item.owner === key || item.friend === key);
   }
   return rows.map((row) => {
-    const incoming = row.user.toLowerCase() !== key;
+    const incoming = row.owner.toLowerCase() !== key;
     let direction = 'accepted';
     if (row.status === 'pending') direction = incoming ? 'incoming' : 'outgoing';
-    return { username: incoming ? row.user : row.friend, status: row.status, direction };
+    return { username: incoming ? row.owner : row.friend, status: row.status, direction };
   });
 }
 
@@ -408,20 +408,20 @@ async function sendFriendRequest(from, to) {
   if (!await getAccount(friend)) return false;
 
   const existing = fileData.friends.find((item) =>
-    (item.user === user && item.friend === friend) || (item.user === friend && item.friend === user));
+    (item.owner === user && item.friend === friend) || (item.owner === friend && item.friend === user));
   if (!pool && existing) return false;
   if (pool) {
     const found = await pool.query(
-      'SELECT 1 FROM friends WHERE (user = $1 AND friend = $2) OR (user = $2 AND friend = $1)',
+      'SELECT 1 FROM friends WHERE (owner = $1 AND friend = $2) OR (owner = $2 AND friend = $1)',
       [user, friend]
     );
     if (found.rows.length) return false;
     await pool.query(
-      'INSERT INTO friends (user, friend, status, created_at) VALUES ($1,$2,$3,$4)',
+      'INSERT INTO friends (owner, friend, status, created_at) VALUES ($1,$2,$3,$4)',
       [user, friend, 'pending', Date.now()]
     );
   } else {
-    fileData.friends.push({ user, friend, status: 'pending', createdAt: Date.now() });
+    fileData.friends.push({ owner: user, friend, status: 'pending', createdAt: Date.now() });
     saveFile();
   }
   return true;
@@ -432,23 +432,23 @@ async function acceptFriendRequest(owner, requester) {
   const friend = requester.toLowerCase();
   if (pool) {
     const result = await pool.query(
-      "UPDATE friends SET status = 'accepted' WHERE user = $1 AND friend = $2 AND status = 'pending'",
+      "UPDATE friends SET status = 'accepted' WHERE owner = $1 AND friend = $2 AND status = 'pending'",
       [friend, user]
     );
     if (!result.rowCount) return false;
     await pool.query(
-      `INSERT INTO friends (user, friend, status, created_at) VALUES ($1,$2,'accepted',$3)
-       ON CONFLICT (user, friend) DO UPDATE SET status = 'accepted'`,
+      `INSERT INTO friends (owner, friend, status, created_at) VALUES ($1,$2,'accepted',$3)
+       ON CONFLICT (owner, friend) DO UPDATE SET status = 'accepted'`,
       [user, friend, Date.now()]
     );
   } else {
     const row = fileData.friends.find((item) =>
-      item.user === friend && item.friend === user && item.status === 'pending');
+      item.owner === friend && item.friend === user && item.status === 'pending');
     if (!row) return false;
     row.status = 'accepted';
-    const reciprocal = fileData.friends.find((item) => item.user === user && item.friend === friend);
+    const reciprocal = fileData.friends.find((item) => item.owner === user && item.friend === friend);
     if (reciprocal) reciprocal.status = 'accepted';
-    else fileData.friends.push({ user, friend, status: 'accepted', createdAt: Date.now() });
+    else fileData.friends.push({ owner: user, friend, status: 'accepted', createdAt: Date.now() });
     saveFile();
   }
   return true;
@@ -459,12 +459,12 @@ async function removeFriend(username, other) {
   const friend = other.toLowerCase();
   if (pool) {
     await pool.query(
-      'DELETE FROM friends WHERE (user = $1 AND friend = $2) OR (user = $2 AND friend = $1)',
+      'DELETE FROM friends WHERE (owner = $1 AND friend = $2) OR (owner = $2 AND friend = $1)',
       [user, friend]
     );
   } else {
     fileData.friends = fileData.friends.filter((item) =>
-      !((item.user === user && item.friend === friend) || (item.user === friend && item.friend === user)));
+      !((item.owner === user && item.friend === friend) || (item.owner === friend && item.friend === user)));
     saveFile();
   }
   return true;
