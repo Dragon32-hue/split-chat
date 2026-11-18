@@ -45,6 +45,12 @@ function cleanAvatarImage(value) {
   return image;
 }
 
+function cleanServerIcon(value) {
+  const icon = String(value || '').trim();
+  if (icon.startsWith('i:')) return clean(icon, 32);
+  return cleanAvatarImage(icon) || 'i:globe';
+}
+
 function publicProfile(profile) {
   return {
     username: profile.username,
@@ -272,7 +278,7 @@ app.post('/api/servers/create', async (req, res) => {
     if (!profile) return res.status(401).json({ error: 'Please log in again.' });
 
     const name = clean(body.name, 32);
-    const icon = clean(body.icon, 8) || '🌐';
+    const icon = cleanServerIcon(body.icon);
     if (!name) return res.status(400).json({ error: 'Please enter a server name.' });
 
     const server = await store.createServer(profile.username, name, icon, ALL_PERMISSIONS, DEFAULT_PERMISSIONS);

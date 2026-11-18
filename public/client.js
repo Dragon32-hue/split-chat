@@ -50,9 +50,25 @@ function svgIcon(name, extraClass) {
 
 function serverIconParts(value) {
   const icon = String(value || '');
-  if (icon.startsWith('i:')) return { content: icon.slice(2), isIcon: true };
-  if (!icon) return { content: 'shield', isIcon: true };
-  return { content: icon, isIcon: false };
+  if (icon.startsWith('i:')) return { content: icon.slice(2), isIcon: true, isImage: false };
+  if (icon.startsWith('data:image/')) return { content: icon, isIcon: false, isImage: true };
+  if (!icon) return { content: 'shield', isIcon: true, isImage: false };
+  return { content: icon, isIcon: false, isImage: false };
+}
+
+function serverIconElement(parts, extraClass) {
+  if (parts.isImage) {
+    const image = document.createElement('img');
+    image.src = parts.content;
+    image.alt = '';
+    image.className = `server-image ${extraClass || ''}`.trim();
+    return image;
+  }
+  if (parts.isIcon) return svgIcon(parts.content, extraClass);
+  const text = document.createElement('span');
+  text.textContent = parts.content;
+  if (extraClass) text.className = extraClass;
+  return text;
 }
 
 const authScreen = byId('auth-screen');
@@ -99,6 +115,7 @@ let servers = [];
 let friends = [];
 let activeServerId = null;
 let serverMode = 'create';
+let pendingServerIcon = '';
 let messagesByChannel = {};
 let conversations = {};
 let members = [];
@@ -256,11 +273,17 @@ function renderAll() {
   updateComposerState();
 }
 
-function makeServerButton(content, title, className, onClick, isIcon) {
+function makeServerButton(content, title, className, onClick, isIcon, isImage) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = `server-icon ${className}`.trim();
-  if (isIcon) button.append(svgIcon(content));
+  if (isImage) {
+    const image = document.createElement('img');
+    image.src = content;
+    image.alt = '';
+    image.className = 'server-image';
+    button.append(image);
+  } else if (isIcon) button.append(svgIcon(content));
   else button.textContent = content;
   button.title = title;
   button.addEventListener('click', onClick);
@@ -269,13 +292,6 @@ function makeServerButton(content, title, className, onClick, isIcon) {
 
 function renderServerRail() {
   serverRail.replaceChildren();
-  serverRail.append(makeServerButton('home', 'Home', view.type === 'home' ? 'active' : '', () => setView('home'), true));
-  serverRail.append(makeServerButton('messages', 'Direct Messages', view.type === 'dms' ? 'active' : '', () => setView('dms'), true));
-  serverRail.append(makeServerButton('users', 'Friends', view.type === 'friends' ? 'active' : '', () => setView('friends'), true));
-
-  const divider = document.createElement('div');
-  divider.className = 'server-divider';
-  serverRail.append(divider);
 
   servers.forEach((server) => {
     const parts = serverIconParts(server.icon);
@@ -284,11 +300,12 @@ function renderServerRail() {
       server.name,
       server.id === activeServerId ? 'active' : '',
       () => setServer(server.id),
-      parts.isIcon
+      parts.isIcon,
+      parts.isImage
     ));
   });
 
-  serverRail.append(makeServerButton('plus', 'Add a server', 'add', openServerModal, true));
+  serverRail.append(makeServerButton('plus', 'Add a server', 'add', openServerModal, true, false));
 }
 
 function setServer(serverId) {
@@ -298,6 +315,11 @@ function setServer(serverId) {
   else setView('home');
 }
 
+function goHomeView(type) {
+  activeServerId = null;
+  setView(type);
+}
+
 function renderChannels() {
   channelList.replaceChildren();
   const server = activeServer();
@@ -305,11 +327,7 @@ function renderChannels() {
   serverTitle.textContent = server ? server.name : 'Split Chat';
   serverIcon.replaceChildren();
   if (!server) serverIcon.append(svgIcon('message', 'logo-icon'));
-  else {
-    const parts = serverIconParts(server.icon);
-    if (parts.isIcon) serverIcon.append(svgIcon(parts.content, 'logo-icon'));
-    else serverIcon.textContent = parts.content;
-  }
+  else serverIcon.append(serverIconElement(serverIconParts(server.icon), 'logo-icon'));
   channelHeading.textContent = server ? `${server.name} Channels` : 'Text Channels';
   serverSettings.classList.toggle('hidden', !server || (!hasPermission('manageRoles') && !hasPermission('manageServer')));
   newChannel.classList.toggle('hidden', !server || !hasPermission('manageChannels'));
@@ -922,6 +940,9 @@ function sendReaction(emoji) {
 
 function openServerModal(mode = 'create') {
   setServerMode(mode);
+  pendingServerIcon = '';
+  byId('server-image').value = '';
+  byId('server-image-preview').classList.add('hidden');
   serverModal.classList.remove('hidden');
   const focusId = mode === 'create' ? 'server-name' : 'join-server-id';
   setTimeout(() => byId(focusId).focus(), 0);
@@ -1190,6 +1211,15 @@ registerForm.addEventListener('submit', async (event) => {
   }
 });
 
+byId('server-image').addEventListener('change', () => {
+  handleImagePick(
+    byId('server-image'),
+    byId('server-image-preview'),
+    (data) => { pendingServerIcon = data; },
+    byId('server-error')
+  );
+});
+
 byId('server-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const errorEl = byId('server-error');
@@ -1219,7 +1249,7 @@ byId('server-form').addEventListener('submit', async (event) => {
       ? await api('/api/servers/create', {
           token,
           name,
-          icon: `i:${byId('server-icon-select').value || 'globe'}`
+          icon: pendingServerIcon || `i:${byId('server-icon-select').value || 'globe'}`
         })
       : await api('/api/servers/join', {
           token,
@@ -1296,9 +1326,9 @@ byId('edit-remove-image').addEventListener('click', () => {
   byId('edit-remove-image').classList.add('hidden');
 });
 
-navHome.addEventListener('click', () => setView('home'));
-navDms.addEventListener('click', () => setView('dms'));
-navFriends.addEventListener('click', () => setView('friends'));
+navHome.addEventListener('click', () => goHomeView('home'));
+navDms.addEventListener('click', () => goHomeView('dms'));
+navFriends.addEventListener('click', () => goHomeView('friends'));
 serverSettings.addEventListener('click', openServerSettings);
 newChannel.addEventListener('click', openChannelModal);
 

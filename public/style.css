@@ -306,6 +306,34 @@ label {
   font-size: 1.8rem;
 }
 
+.server-icon .server-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.server-icon:hover .server-image,
+.server-icon.active .server-image {
+  border-radius: 16px;
+}
+
+.brand-mark .server-image {
+  width: 1.35em;
+  height: 1.35em;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.server-image-preview {
+  display: block;
+  width: 48px;
+  height: 48px;
+  margin-top: 8px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
 .server-divider {
   width: 32px;
   height: 2px;

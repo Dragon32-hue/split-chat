@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Split Chat</title>
-  <link rel="stylesheet" href="/style.css?v=6" />
+  <link rel="stylesheet" href="/style.css?v=7" />
 </head>
 <body>
   <svg xmlns="http://www.w3.org/2000/svg" class="icon-sprite" aria-hidden="true">
@@ -351,6 +351,9 @@
         <input id="server-name" maxlength="32" />
         <label for="server-icon-select">Icon</label>
         <select id="server-icon-select"></select>
+        <label for="server-image">Custom image (optional)</label>
+        <input id="server-image" type="file" accept="image/*" />
+        <img id="server-image-preview" class="server-image-preview hidden" alt="Custom server icon preview" />
       </div>
       <div id="server-join-fields" class="hidden">
         <label for="join-server-id">Server ID</label>
@@ -406,6 +409,6 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/client.js?v=6"></script>
+  <script src="/client.js?v=7"></script>
 </body>
 </html>
