@@ -7,11 +7,37 @@ const DATA_FILE = path.join(DATA_DIR, 'accounts.json');
 let pool = null;
 let fileData = { accounts: {}, sessions: {} };
 
+function normalizeDatabaseUrl(value) {
+  let url = String(value || '').trim();
+  if ((url.startsWith('"') && url.endsWith('"')) || (url.startsWith("'") && url.endsWith("'"))) {
+    url = url.slice(1, -1).trim();
+  }
+  if (url && !/^postgres(?:ql)?:\/\//i.test(url) && url.includes('.pooler.supabase.com')) {
+    url = `postgresql://${url}`;
+  }
+  return url;
+}
+
 async function init() {
-  if (process.env.DATABASE_URL) {
+  const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
+  if (databaseUrl) {
+    console.log('DATABASE_URL diagnostics:', JSON.stringify({
+      scheme: /^postgres(?:ql)?:\/\//i.test(databaseUrl),
+      length: databaseUrl.length,
+      hasAt: databaseUrl.includes('@'),
+      hasPort: /:5432\b/.test(databaseUrl) || /:6543\b/.test(databaseUrl),
+      placeholder: databaseUrl.includes('[YOUR')
+    }));
+    if (!/^postgres(?:ql)?:\/\//i.test(databaseUrl)) {
+      throw new Error('DATABASE_URL must start with postgresql://');
+    }
+    if (databaseUrl.includes('[YOUR')) {
+      throw new Error('DATABASE_URL still contains a placeholder. Replace it with your real database password.');
+    }
+
     const { Pool } = require('pg');
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: databaseUrl,
       ssl: { rejectUnauthorized: false }
     });
     await pool.query(`CREATE TABLE IF NOT EXISTS accounts (
