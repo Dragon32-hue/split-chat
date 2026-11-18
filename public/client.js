@@ -292,6 +292,12 @@ function makeServerButton(content, title, className, onClick, isIcon, isImage) {
 
 function renderServerRail() {
   serverRail.replaceChildren();
+  serverRail.append(makeServerButton('home', 'Home', view.type === 'home' ? 'active' : '', () => setView('home'), true, false));
+  serverRail.append(makeServerButton('users', 'Friends', view.type === 'friends' ? 'active' : '', () => setView('friends'), true, false));
+
+  const divider = document.createElement('div');
+  divider.className = 'server-divider';
+  serverRail.append(divider);
 
   servers.forEach((server) => {
     const parts = serverIconParts(server.icon);
@@ -313,11 +319,6 @@ function setServer(serverId) {
   const server = activeServer();
   if (server && server.channels.length) setView('channel', server.channels[0].id);
   else setView('home');
-}
-
-function goHomeView(type) {
-  activeServerId = null;
-  setView(type);
 }
 
 function renderChannels() {
@@ -1326,9 +1327,9 @@ byId('edit-remove-image').addEventListener('click', () => {
   byId('edit-remove-image').classList.add('hidden');
 });
 
-navHome.addEventListener('click', () => goHomeView('home'));
-navDms.addEventListener('click', () => goHomeView('dms'));
-navFriends.addEventListener('click', () => goHomeView('friends'));
+navHome.addEventListener('click', () => setView('home'));
+navDms.addEventListener('click', () => setView('dms'));
+navFriends.addEventListener('click', () => setView('friends'));
 serverSettings.addEventListener('click', openServerSettings);
 newChannel.addEventListener('click', openChannelModal);
 
