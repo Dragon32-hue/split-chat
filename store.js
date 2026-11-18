@@ -21,12 +21,23 @@ function normalizeDatabaseUrl(value) {
 async function init() {
   const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
   if (databaseUrl) {
+    const schemeEnd = databaseUrl.indexOf('://') + 3;
+    const at = databaseUrl.lastIndexOf('@');
+    const masked = at > schemeEnd
+      ? `${databaseUrl.slice(0, schemeEnd)}***${databaseUrl.slice(at)}`
+      : databaseUrl;
     console.log('DATABASE_URL diagnostics:', JSON.stringify({
       scheme: /^postgres(?:ql)?:\/\//i.test(databaseUrl),
       length: databaseUrl.length,
       hasAt: databaseUrl.includes('@'),
       hasPort: /:5432\b/.test(databaseUrl) || /:6543\b/.test(databaseUrl),
-      placeholder: databaseUrl.includes('[YOUR')
+      placeholder: databaseUrl.includes('[YOUR'),
+      masked,
+      whitespace: /\s/.test(databaseUrl),
+      hash: databaseUrl.includes('#'),
+      percent: databaseUrl.includes('%'),
+      question: databaseUrl.includes('?'),
+      ampersand: databaseUrl.includes('&')
     }));
     if (!/^postgres(?:ql)?:\/\//i.test(databaseUrl)) {
       throw new Error('DATABASE_URL must start with postgresql://');
