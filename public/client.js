@@ -82,7 +82,9 @@ const navHome = byId('nav-home');
 const navDms = byId('nav-dms');
 const navFriends = byId('nav-friends');
 const channelList = byId('channel-list');
+const channelsSection = byId('channels-section');
 const dmList = byId('dm-list');
+const dmsSection = byId('dms-section');
 const membersEl = byId('members');
 const memberCountEl = byId('member-count');
 const messagesEl = byId('messages');
@@ -324,14 +326,26 @@ function setServer(serverId) {
 function renderChannels() {
   channelList.replaceChildren();
   const server = activeServer();
+  const inServer = view.type === 'channel' && !!server;
 
-  serverTitle.textContent = server ? server.name : 'Split Chat';
+  channelsSection.classList.toggle('hidden', !inServer);
+  dmsSection.classList.toggle('hidden', inServer);
+
   serverIcon.replaceChildren();
-  if (!server) serverIcon.append(svgIcon('message', 'logo-icon'));
-  else serverIcon.append(serverIconElement(serverIconParts(server.icon), 'logo-icon'));
-  channelHeading.textContent = server ? `${server.name} Channels` : 'Text Channels';
-  serverSettings.classList.toggle('hidden', !server || (!hasPermission('manageRoles') && !hasPermission('manageServer')));
-  newChannel.classList.toggle('hidden', !server || !hasPermission('manageChannels'));
+  if (inServer) {
+    serverTitle.textContent = server.name;
+    serverIcon.append(serverIconElement(serverIconParts(server.icon), 'logo-icon'));
+    channelHeading.textContent = `${server.name} Channels`;
+  } else {
+    const homeTitle = view.type === 'friends'
+      ? 'Friends'
+      : (view.type === 'dms' || view.type === 'dm') ? 'Direct Messages' : 'Home';
+    serverTitle.textContent = homeTitle;
+    serverIcon.append(svgIcon(view.type === 'friends' ? 'users' : view.type === 'home' ? 'home' : 'messages', 'logo-icon'));
+    channelHeading.textContent = 'Text Channels';
+  }
+  serverSettings.classList.toggle('hidden', !inServer || (!hasPermission('manageRoles') && !hasPermission('manageServer')));
+  newChannel.classList.toggle('hidden', !inServer || !hasPermission('manageChannels'));
 
   activeChannels().forEach((channel) => {
     const item = document.createElement('li');
